@@ -84,14 +84,66 @@ function resolveSelect(id, type) {
   return el.value;
 }
 
-function deleteStatus(v) {
-  if (!confirm(`Remove "${v}" status?`)) return;
+function toggleManageStatuses() {
+  const p = document.getElementById('manageStatusPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display !== 'none') renderManageStatusList();
+}
+
+function renderManageStatusList() {
+  const el    = document.getElementById('manageStatusList');
+  if (!el) return;
+  const extra = JSON.parse(localStorage.getItem('extra_statuses') || '[]');
+  const builtIn = DEFAULT_STATUSES.map(s => s.label);
+
+  // Built-in statuses — shown as non-deletable chips
+  const builtInHtml = DEFAULT_STATUSES.map(s => `
+    <span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-1);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--text-2)">
+      ${s.label}
+      <span style="font-size:10px;color:var(--text-3);margin-left:2px">built-in</span>
+    </span>`).join('');
+
+  // Custom statuses — deletable
+  const customHtml = extra.length
+    ? extra.map(v => `
+    <span style="display:inline-flex;align-items:center;gap:6px;background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn-text) 30%,transparent);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--warn-text)">
+      ${v}
+      <button onclick="deleteStatusFromPanel('${v}')" style="background:none;border:none;cursor:pointer;padding:0;color:var(--danger-text);font-size:16px;line-height:1;display:flex;align-items:center" title="Delete this status">×</button>
+    </span>`).join('')
+    : '<span style="font-size:12px;color:var(--text-3)">No custom statuses yet.</span>';
+
+  el.innerHTML = `
+    <div style="width:100%">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3);margin-bottom:6px">Built-in</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${builtInHtml}</div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3);margin-bottom:6px">Custom (deletable)</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${customHtml}</div>
+    </div>`;
+}
+
+function deleteStatusFromPanel(v) {
+  if (!confirm(`Remove "${v}" status? Members with this status will be cleared.`)) return;
   const extra = JSON.parse(localStorage.getItem('extra_statuses') || '[]').filter(s => s !== v);
   localStorage.setItem('extra_statuses', JSON.stringify(extra));
-  // clear it from any members who have it
   members.forEach(m => { if (m.status === v) { m.status = ''; api('PUT', `/api/members/${m.id}`, { status: '' }); } });
+  renderManageStatusList();
   render(); renderStats();
-  toast(`Status "${v}" removed`);
+  toast(`"${v}" removed`);
+}
+
+function addNewStatusFromPanel() {
+  const el = document.getElementById('newStatusInput');
+  if (!el || !el.value.trim()) return;
+  const upper = el.value.trim().toUpperCase();
+  addStatus(upper);
+  el.value = '';
+  renderManageStatusList();
+  render();
+  toast(`"${upper}" added`);
+}
+
+function deleteStatus(v) {
+  deleteStatusFromPanel(v);
 }
 
 let submittedBy = localStorage.getItem('submittedBy') || '';
@@ -335,6 +387,62 @@ function toggleMusterAdd() {
   if (musterAddOpen) setTimeout(() => { const el = document.getElementById('mName'); if (el) el.focus(); }, 50);
 }
 
+let musterView = 'all'; // 'all' | 'pending' | 'done'
+
+function setMusterView(v) {
+  musterView = v;
+  document.querySelectorAll('.muster-view-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === v);
+  });
+  render();
+}
+
+function makeCard(m) {
+  const noteEl = editingNote === m.id
+    ? `<div class="note-input-row"><input type="text" placeholder="Return date, verifier, detail..." value="${(m.note||'').replace(/"/g,'&quot;')}"
+        onchange="saveNote(${m.id},this.value)" onblur="saveNote(${m.id},this.value)">
+        <button class="sm" onclick="editingNote=null;render()"><i class='ti ti-check'></i> Done</button></div>`
+    : m.note
+      ? `<div class="card-note"><i class="ti ti-notes" style="font-size:12px"></i> ${m.note}
+          <button class="icon sm" onclick="editingNote=${m.id};render()"><i class="ti ti-pencil" style="font-size:12px"></i></button></div>`
+      : '';
+  return `<div class="card${m.status==='UA'?' ua':''}${!m.status?' pending':''}"
+      draggable="true"
+      ondragstart="onDragStart(event,${m.id})"
+      ondragend="onDragEnd(event)"
+      ondragover="onDragOver(event)"
+      ondrop="onDrop(event,${m.id})">
+    <div style="cursor:grab;color:var(--text-3);padding:0 4px;align-self:stretch;display:flex;align-items:center">
+      <i class="ti ti-grip-vertical" style="font-size:16px"></i>
+    </div>
+    <div class="card-body">
+      <div class="card-top">
+        ${pill(m.status)}
+        <span class="card-name">${m.name}</span>
+        <span class="card-meta">${m.rate||''}</span>
+        <button class="icon sm" onclick="editingNote=${editingNote===m.id?null:m.id};render()" title="Add note" style="margin-left:auto"><i class="ti ti-pencil"></i></button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
+          TEAM ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
+        </label>
+        <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
+          DIVISION ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
+        </label>
+      </div>
+      ${noteEl}
+    </div>
+    <div class="card-actions">
+      <select class="status-select sm" onchange="handleStatusChange(${m.id},this.value,this)">
+        <option value="" ${!m.status?'selected':''}>-- status --</option>
+        ${getStatuses().map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}${!CORE_STATUS_VALS.includes(s.v)?' ✕':''}</option>`).join('')}
+        <option value="__new_status__">+ Add new...</option>
+      </select>
+      <button class="icon del sm" onclick="deleteMember(${m.id})" title="Remove"><i class="ti ti-trash"></i></button>
+    </div>
+  </div>`;
+}
+
 function render() {
   renderStats();
   const q  = (document.getElementById('search')||{value:''}).value.toLowerCase();
@@ -355,14 +463,42 @@ function render() {
     stSel.add(new Option('+ Add new...','__new_status__'));
   }
 
-  const list = members.filter(m => {
+  // Base filter
+  let list = members.filter(m => {
     if (q && !m.name.toLowerCase().includes(q) && !(m.rate||'').toLowerCase().includes(q)) return false;
     if (fs && m.sec !== fs) return false;
     if (ft && m.status !== ft) return false;
     return true;
   });
 
+  // Split pending vs done — UA stays in pending
+  const pending = list.filter(m => !m.status || m.status === 'UA');
+  const done    = list.filter(m =>  m.status && m.status !== 'UA');
+
+  // Which to show
+  const showList = musterView === 'pending' ? pending
+                 : musterView === 'done'    ? done
+                 : list;  // 'all' — pending first, then done
+
   const rosterEl = document.getElementById('roster');
+
+  const pendingCount = members.filter(m => !m.status || m.status === 'UA').length;
+  const doneCount    = members.filter(m =>  m.status && m.status !== 'UA').length;
+
+  const viewTabs = `
+    <div style="display:flex;gap:4px;margin-bottom:10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:3px;width:fit-content">
+      <button class="muster-view-tab tab ${musterView==='all'?'active':''}" data-view="all" onclick="setMusterView('all')">
+        All <span style="font-size:11px;opacity:.7">${list.length}</span>
+      </button>
+      <button class="muster-view-tab tab ${musterView==='pending'?'active':''}" data-view="pending" onclick="setMusterView('pending')"
+        style="${pendingCount>0?'color:var(--warn-text)':''}">
+        Pending <span style="font-size:11px;opacity:.7">${pendingCount}</span>
+      </button>
+      <button class="muster-view-tab tab ${musterView==='done'?'active':''}" data-view="done" onclick="setMusterView('done')"
+        style="${doneCount===members.length&&members.length>0?'color:var(--success-text)':''}">
+        Checked In <span style="font-size:11px;opacity:.7">${doneCount}</span>
+      </button>
+    </div>`;
 
   const addPanel = musterAddOpen ? `
     <div class="add-panel" style="margin-bottom:1rem">
@@ -393,66 +529,42 @@ function render() {
       <span style="font-size:11px;color:var(--text-3);margin-left:4px">or drag <i class="ti ti-grip-horizontal"></i> to reorder</span>
     </div>`;
 
-  if (!list.length) {
-    rosterEl.innerHTML = addPanel + sortBar + `<div class="empty"><i class="ti ti-users-group"></i><p>${members.length ? 'No members match the filter.' : 'No members yet. Hit Add member to get started.'}</p></div>`;
+  if (!showList.length) {
+    const msg = musterView === 'pending' ? 'All members are checked in.' :
+                musterView === 'done'    ? 'No members have checked in yet.' :
+                members.length ? 'No members match the filter.' : 'No members yet. Hit Add member to get started.';
+    rosterEl.innerHTML = addPanel + viewTabs + sortBar + `<div class="empty"><i class="ti ti-${musterView==='pending'?'circle-check':'users-group'}"></i><p>${msg}</p></div>`;
     return;
   }
 
-  const bySec = {};
-  list.forEach(m => { const k = m.sec||'—'; (bySec[k]=bySec[k]||[]).push(m); });
-  const keys = Object.keys(bySec).sort((a,b)=>a.localeCompare(b));
+  // In 'all' view: pending first with divider, then done
+  let html = '';
+  if (musterView === 'all') {
+    if (pending.length) {
+      html += `<div class="sec-hdr">
+        <span class="sec-hdr-label" style="color:var(--warn-text)">Pending</span>
+        <span class="sec-hdr-count" style="background:var(--warn-bg);color:var(--warn-text)">${pending.length}</span>
+        <hr></div>
+        <div class="roster">${pending.map(makeCard).join('')}</div>`;
+    }
+    if (done.length) {
+      html += `<div class="sec-hdr" style="margin-top:${pending.length?'16px':'0'}">
+        <span class="sec-hdr-label" style="color:var(--success-text)">Checked In</span>
+        <span class="sec-hdr-count" style="background:var(--success-bg);color:var(--success-text)">${done.length}</span>
+        <hr></div>
+        <div class="roster">${done.map(makeCard).join('')}</div>`;
+    }
+  } else {
+    // Pending or Done view — group by team
+    const bySec = {};
+    showList.forEach(m => { const k = m.sec||'—'; (bySec[k]=bySec[k]||[]).push(m); });
+    const keys = Object.keys(bySec).sort((a,b)=>a.localeCompare(b));
+    html = keys.map(sk => `
+      <div class="sec-hdr"><span class="sec-hdr-label">Team ${sk}</span><span class="sec-hdr-count">${bySec[sk].length}</span><hr></div>
+      <div class="roster">${bySec[sk].map(makeCard).join('')}</div>`).join('');
+  }
 
-  const rows = keys.map(sk => {
-    const cards = bySec[sk].map(m => {
-      const noteEl = editingNote === m.id
-        ? `<div class="note-input-row"><input type="text" placeholder="Return date, verifier, detail..." value="${(m.note||'').replace(/"/g,'&quot;')}"
-            onchange="saveNote(${m.id},this.value)" onblur="saveNote(${m.id},this.value)">
-            <button class="sm" onclick="editingNote=null;render()"><i class='ti ti-check'></i> Done</button></div>`
-        : m.note
-          ? `<div class="card-note"><i class="ti ti-notes" style="font-size:12px"></i> ${m.note}
-              <button class="icon sm" onclick="editingNote=${m.id};render()"><i class="ti ti-pencil" style="font-size:12px"></i></button></div>`
-          : '';
-      return `<div class="card${m.status==='UA'?' ua':''}${!m.status?' pending':''}"
-          draggable="true"
-          ondragstart="onDragStart(event,${m.id})"
-          ondragend="onDragEnd(event)"
-          ondragover="onDragOver(event)"
-          ondrop="onDrop(event,${m.id})">
-        <div style="cursor:grab;color:var(--text-3);padding:0 4px;align-self:stretch;display:flex;align-items:center">
-          <i class="ti ti-grip-vertical" style="font-size:16px"></i>
-        </div>
-        <div class="card-body">
-          <div class="card-top">
-            ${pill(m.status)}
-            <span class="card-name">${m.name}</span>
-            <span class="card-meta">${m.rate||''}</span>
-            <button class="icon sm" onclick="editingNote=${editingNote===m.id?null:m.id};render()" title="Add note" style="margin-left:auto"><i class="ti ti-pencil"></i></button>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
-            <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-              TEAM ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
-            </label>
-            <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-              DIVISION ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
-            </label>
-          </div>
-          ${noteEl}
-        </div>
-        <div class="card-actions">
-          <select class="status-select sm" onchange="handleStatusChange(${m.id},this.value,this)">
-            <option value="" ${!m.status?'selected':''}>-- status --</option>
-            ${getStatuses().map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}${!CORE_STATUS_VALS.includes(s.v)?' ✕':''}</option>`).join('')}
-            <option value="__new_status__">+ Add new...</option>
-          </select>
-          <button class="icon del sm" onclick="deleteMember(${m.id})" title="Remove"><i class="ti ti-trash"></i></button>
-        </div>
-      </div>`;
-    }).join('');
-    return `<div class="sec-hdr"><span class="sec-hdr-label">Team ${sk}</span><span class="sec-hdr-count">${bySec[sk].length}</span><hr></div>
-            <div class="roster">${cards}</div>`;
-  }).join('');
-
-  rosterEl.innerHTML = addPanel + sortBar + rows;
+  rosterEl.innerHTML = addPanel + viewTabs + sortBar + html;
 }
 
 function renderRosterList() {
@@ -502,6 +614,16 @@ function renderRosterList() {
 }
 
 // ── Report ────────────────────────────────────────────────────────────────────
+// hidden lines persisted per key
+function getHidden() { return JSON.parse(localStorage.getItem('report_hidden') || '[]'); }
+function toggleLine(key) {
+  const h = getHidden();
+  const idx = h.indexOf(key);
+  if (idx >= 0) h.splice(idx, 1); else h.push(key);
+  localStorage.setItem('report_hidden', JSON.stringify(h));
+  generateReport();
+}
+
 function generateReport() {
   const now    = new Date();
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -512,44 +634,46 @@ function generateReport() {
   const ua      = cnt('UA');
   const pending = members.filter(m => !m.status).length;
   const acct    = members.length - ua - pending;
-
   const statuses = getStatuses();
+  const hidden   = getHidden();
 
-  // Summary counts
-  const summaryLines = [
-    `PRESENT:          ${cnt('PRESENT')}`,
-    `PHONE / TEXT:     ${cnt('PHONE','TEXT')}`,
-    `APPT / SICK CALL: ${cnt('APPT','SICK CALL')}`,
-    `SIQ:              ${cnt('SIQ')}`,
-    `LEAVE:            ${cnt('LEAVE')}`,
-    `TAD:              ${cnt('TAD')}`,
-    `POST-WATCH:       ${cnt('POST-WATCH')}`,
-    `LIBERTY:          ${cnt('LIBERTY')}`,
-    `RPT N85 OFFICE:   ${cnt('RPT N85')}`,
-    `UA:               ${ua}`,
-    ...statuses.filter(s => !CORE_STATUS_VALS.includes(s.v)).map(s => `${s.label.toUpperCase().padEnd(17)} ${cnt(s.v)}`),
+  // Build summary line definitions — {key, text}
+  const summaryDefs = [
+    { key: 'ASSIGNED',   text: `ASSIGNED:        ${members.length}` },
+    { key: 'ACCOUNTED',  text: `ACCOUNTED FOR:   ${acct}` },
+    { key: 'UNACCT',     text: `UNACCOUNTED:     ${ua + pending}` },
+    { key: '_sep1',      text: '' },
+    { key: 'PRESENT',    text: `PRESENT:          ${cnt('PRESENT')}` },
+    { key: 'PHONETEXT',  text: `PHONE / TEXT:     ${cnt('PHONE','TEXT')}` },
+    { key: 'APPT',       text: `APPT / SICK CALL: ${cnt('APPT','SICK CALL')}` },
+    { key: 'SIQ',        text: `SIQ:              ${cnt('SIQ')}` },
+    { key: 'LEAVE',      text: `LEAVE:            ${cnt('LEAVE')}` },
+    { key: 'TAD',        text: `TAD:              ${cnt('TAD')}` },
+    { key: 'POSTWATCH',  text: `POST-WATCH:       ${cnt('POST-WATCH')}` },
+    { key: 'LIBERTY',    text: `LIBERTY:          ${cnt('LIBERTY')}` },
+    { key: 'RPTN85',     text: `RPT N85 OFFICE:   ${cnt('RPT N85')}` },
+    { key: 'UA',         text: `UA:               ${ua}` },
+    ...statuses.filter(s => !CORE_STATUS_VALS.includes(s.v))
+      .map(s => ({ key: 'CUSTOM_'+s.v, text: `${s.label.toUpperCase().padEnd(17)} ${cnt(s.v)}` })),
   ];
 
-  // Full roster list by name with status
+  // Full roster with rate
+  const maxRateLen = Math.max(...members.map(m => (m.rate||'').length), 3);
   const maxNameLen = Math.max(...members.map(m => m.name.length), 20);
   const rosterLines = members.map(m => {
     const st    = statuses.find(s => s.v === m.status);
     const label = m.status ? (st ? st.label.toUpperCase() : m.status) : 'NO STATUS';
+    const rate  = (m.rate || '').padEnd(maxRateLen + 1);
     const note  = m.note ? ` (${m.note})` : '';
-    return `  ${m.name.padEnd(maxNameLen + 2)} ${label}${note}`;
+    return `  ${rate}${m.name.padEnd(maxNameLen + 2)} ${label}${note}`;
   });
 
-  const submitterOpts = getSubmitters().map(s =>
-    `<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('');
-
-  const report = [
+  // Build plain-text version for copy (only visible lines)
+  const visibleSummary = summaryDefs.filter(d => !hidden.includes(d.key)).map(d => d.text);
+  const plainText = [
     `MUSTER REPORT - ${dt} / ${hhmm}`,
     '',
-    `ASSIGNED:        ${members.length}`,
-    `ACCOUNTED FOR:   ${acct}`,
-    `UNACCOUNTED:     ${ua + pending}`,
-    '',
-    ...summaryLines,
+    ...visibleSummary,
     '',
     'FULL ROSTER BY NAME:',
     ...rosterLines,
@@ -557,9 +681,53 @@ function generateReport() {
     `SUBMITTED BY: ${submittedBy || '______________________'}`,
   ].join('\n');
 
-  document.getElementById('reportPre').textContent = report;
+  // Build interactive HTML version
+  const lineHtml = summaryDefs.map(d => {
+    if (d.key.startsWith('_sep')) return `<div style="height:8px"></div>`;
+    const isHidden = hidden.includes(d.key);
+    return `<div onclick="toggleLine('${d.key}')" style="
+      display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:6px;
+      cursor:pointer;font-family:'Courier New',monospace;font-size:12px;line-height:1.6;
+      color:${isHidden?'var(--text-3)':'var(--text)'};
+      background:${isHidden?'transparent':'var(--surface-alt)'};
+      text-decoration:${isHidden?'line-through':'none'};
+      transition:background .12s;
+      user-select:none" title="${isHidden?'Click to show':'Click to hide'}">
+      <span style="font-size:14px;flex-shrink:0">${isHidden?'○':'●'}</span>
+      <span style="flex:1">${d.text || '&nbsp;'}</span>
+      <span style="font-size:11px;color:var(--text-3)">${isHidden?'hidden':'visible'}</span>
+    </div>`;
+  }).join('');
 
-  // Submitted by selector below the report
+  const rosterHtml = rosterLines.map(l =>
+    `<div style="font-family:'Courier New',monospace;font-size:12px;line-height:1.7;color:var(--text);padding:1px 0">${l}</div>`
+  ).join('');
+
+  const reportEl = document.getElementById('reportPre');
+  if (reportEl) {
+    reportEl.style.fontFamily = 'inherit';
+    reportEl.style.fontSize   = 'inherit';
+    reportEl.style.background = 'transparent';
+    reportEl.style.padding    = '0';
+    reportEl.innerHTML = `
+      <div style="margin-bottom:4px">
+        <div style="font-family:'Courier New',monospace;font-size:13px;font-weight:600;color:var(--text);padding:8px;background:var(--surface-alt);border-radius:6px;margin-bottom:8px">
+          MUSTER REPORT — ${dt} / ${hhmm}
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;padding:0 4px">
+          Click any line to show/hide it from the copied report
+        </div>
+        ${lineHtml}
+        <div style="height:12px"></div>
+        <div style="font-family:'Courier New',monospace;font-size:12px;font-weight:600;color:var(--text);padding:4px 8px">FULL ROSTER BY NAME:</div>
+        <div style="padding:4px 8px;background:var(--surface-alt);border-radius:6px">${rosterHtml}</div>
+      </div>`;
+    // store plain text for copy
+    reportEl.dataset.plain = plainText;
+  }
+
+  const submitterOpts = getSubmitters().map(s =>
+    `<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('');
   const subEl = document.getElementById('submittedByRow');
   if (subEl) {
     subEl.innerHTML = `
@@ -568,18 +736,25 @@ function generateReport() {
         <option value="">-- Select --</option>
         ${submitterOpts}
         <option value="__new__">+ Add new...</option>
-      </select>`;
+      </select>
+      ${submittedBy ? `<span style="font-size:13px;color:var(--text-2)">· Report will show: <strong>${submittedBy}</strong></span>` : ''}`;
   }
 
   const warn = document.getElementById('reportWarn');
-  if (pending > 0) { warn.innerHTML = `<i class="ti ti-alert-triangle"></i> ${pending} member(s) have no status entered.`; warn.style.display='flex'; }
-  else warn.style.display = 'none';
+  if (warn) {
+    if (pending > 0) { warn.innerHTML = `<i class="ti ti-alert-triangle"></i> ${pending} member(s) have no status entered.`; warn.style.display='flex'; }
+    else warn.style.display = 'none';
+  }
 
-  switchTab('report', document.querySelectorAll('.tab')[2]);
+  if (document.getElementById('tab-report').style.display === 'none')
+    switchTab('report', document.querySelectorAll('.tab')[2]);
 }
 
+
 function copyReport() {
-  navigator.clipboard.writeText(document.getElementById('reportPre').textContent).then(() => toast('Copied to clipboard'));
+  const el  = document.getElementById('reportPre');
+  const txt = el.dataset.plain || el.textContent;
+  navigator.clipboard.writeText(txt).then(() => toast('Copied to clipboard'));
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
