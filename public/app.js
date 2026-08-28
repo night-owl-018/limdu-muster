@@ -422,13 +422,9 @@ function makeCard(m) {
         <span class="card-meta">${m.rate||''}</span>
         <button class="icon sm" onclick="editingNote=${editingNote===m.id?null:m.id};render()" title="Add note" style="margin-left:auto"><i class="ti ti-pencil"></i></button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
-        <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-          TEAM ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
-        </label>
-        <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-          DIVISION ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
-        </label>
+      <div class="card-meta-row${showTeamDiv?'':' hidden'}">
+        <span class="card-field-label">TEAM</span> ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
+        <span class="card-field-label" style="margin-left:6px">DIV</span> ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
       </div>
       ${noteEl}
     </div>
@@ -597,13 +593,9 @@ function renderRosterList() {
           <span class="card-name">${m.name}</span>
           <span class="card-meta">${m.rate||''}</span>
         </div>
-        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
-          <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-            TEAM ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
-          </label>
-          <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-            DIVISION ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
-          </label>
+        <div class="card-meta-row${showTeamDiv?'':' hidden'}">
+          <span class="card-field-label">TEAM</span> ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
+          <span class="card-field-label" style="margin-left:6px">DIV</span> ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
         </div>
       </div>
       <div class="card-actions">
@@ -614,21 +606,32 @@ function renderRosterList() {
 }
 
 // ── Report ────────────────────────────────────────────────────────────────────
-// hidden lines persisted per key
 function getHidden() { return JSON.parse(localStorage.getItem('report_hidden') || '[]'); }
 function toggleLine(key) {
   const h = getHidden();
-  const idx = h.indexOf(key);
-  if (idx >= 0) h.splice(idx, 1); else h.push(key);
+  const i = h.indexOf(key);
+  if (i >= 0) h.splice(i,1); else h.push(key);
   localStorage.setItem('report_hidden', JSON.stringify(h));
   generateReport();
+}
+
+let showTeamDiv = localStorage.getItem('showTeamDiv') !== 'false';
+
+function toggleTeamDiv() {
+  showTeamDiv = !showTeamDiv;
+  localStorage.setItem('showTeamDiv', showTeamDiv);
+  const btn = document.getElementById('teamDivToggleBtn');
+  if (btn) btn.innerHTML = `<i class="ti ti-eye${showTeamDiv?'':'-off'}"></i> Team/Div`;
+  render();
 }
 
 function generateReport() {
   const now    = new Date();
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const days   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const dt     = String(now.getDate()).padStart(2,'0') + months[now.getMonth()] + String(now.getFullYear()).slice(2);
   const hhmm   = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+  const dayStr = days[now.getDay()];
 
   const cnt     = (...vs) => members.filter(m => vs.includes(m.status)).length;
   const ua      = cnt('UA');
@@ -637,119 +640,129 @@ function generateReport() {
   const statuses = getStatuses();
   const hidden   = getHidden();
 
-  // Build summary line definitions — {key, text}
+  // Summary card definitions
   const summaryDefs = [
-    { key: 'ASSIGNED',   text: `ASSIGNED:        ${members.length}` },
-    { key: 'ACCOUNTED',  text: `ACCOUNTED FOR:   ${acct}` },
-    { key: 'UNACCT',     text: `UNACCOUNTED:     ${ua + pending}` },
-    { key: '_sep1',      text: '' },
-    { key: 'PRESENT',    text: `PRESENT:          ${cnt('PRESENT')}` },
-    { key: 'PHONETEXT',  text: `PHONE / TEXT:     ${cnt('PHONE','TEXT')}` },
-    { key: 'APPT',       text: `APPT / SICK CALL: ${cnt('APPT','SICK CALL')}` },
-    { key: 'SIQ',        text: `SIQ:              ${cnt('SIQ')}` },
-    { key: 'LEAVE',      text: `LEAVE:            ${cnt('LEAVE')}` },
-    { key: 'TAD',        text: `TAD:              ${cnt('TAD')}` },
-    { key: 'POSTWATCH',  text: `POST-WATCH:       ${cnt('POST-WATCH')}` },
-    { key: 'LIBERTY',    text: `LIBERTY:          ${cnt('LIBERTY')}` },
-    { key: 'RPTN85',     text: `RPT N85 OFFICE:   ${cnt('RPT N85')}` },
-    { key: 'UA',         text: `UA:               ${ua}` },
+    { key:'ASSIGNED',  label:'Assigned',       val: members.length, accent: true },
+    { key:'ACCOUNTED', label:'Accounted For',   val: acct },
+    { key:'UNACCT',    label:'Unaccounted',     val: ua + pending, danger: (ua+pending) > 0 },
+    { key:'PRESENT',   label:'Present',         val: cnt('PRESENT'), success: true },
+    { key:'PHONETEXT', label:'Phone / Text',    val: cnt('PHONE','TEXT') },
+    { key:'APPT',      label:'Appt / Sick',     val: cnt('APPT','SICK CALL') },
+    { key:'SIQ',       label:'SIQ',             val: cnt('SIQ') },
+    { key:'LEAVE',     label:'Leave',           val: cnt('LEAVE') },
+    { key:'TAD',       label:'TAD',             val: cnt('TAD') },
+    { key:'POSTWATCH', label:'Post-Watch',      val: cnt('POST-WATCH') },
+    { key:'LIBERTY',   label:'Liberty',         val: cnt('LIBERTY') },
+    { key:'RPTN85',    label:'RPT N85 Office',  val: cnt('RPT N85') },
+    { key:'UA',        label:'UA',              val: ua, danger: ua > 0 },
     ...statuses.filter(s => !CORE_STATUS_VALS.includes(s.v))
-      .map(s => ({ key: 'CUSTOM_'+s.v, text: `${s.label.toUpperCase().padEnd(17)} ${cnt(s.v)}` })),
+      .map(s => ({ key:'CUSTOM_'+s.v, label:s.label, val: cnt(s.v) })),
   ];
 
-  // Full roster with rate
-  const maxRateLen = Math.max(...members.map(m => (m.rate||'').length), 3);
-  const maxNameLen = Math.max(...members.map(m => m.name.length), 20);
-  const rosterLines = members.map(m => {
+  // Build plain text (only visible lines)
+  const visLines = summaryDefs.filter(d => !hidden.includes(d.key))
+    .map(d => `${d.label.toUpperCase().padEnd(18)} ${d.val}`);
+
+  const maxRateLen = Math.max(...members.map(m=>(m.rate||'').length), 4);
+  const maxNameLen = Math.max(...members.map(m=>m.name.length), 20);
+  const rosterPlain = members.map(m => {
     const st    = statuses.find(s => s.v === m.status);
     const label = m.status ? (st ? st.label.toUpperCase() : m.status) : 'NO STATUS';
-    const rate  = (m.rate || '').padEnd(maxRateLen + 1);
     const note  = m.note ? ` (${m.note})` : '';
-    return `  ${rate}${m.name.padEnd(maxNameLen + 2)} ${label}${note}`;
+    return `  ${(m.rate||'').padEnd(maxRateLen+1)}${m.name.padEnd(maxNameLen+2)} ${label}${note}`;
   });
 
-  // Build plain-text version for copy (only visible lines)
-  const visibleSummary = summaryDefs.filter(d => !hidden.includes(d.key)).map(d => d.text);
+  const submitterOpts = getSubmitters().map(s =>
+    `<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('');
+
   const plainText = [
-    `MUSTER REPORT - ${dt} / ${hhmm}`,
+    `MUSTER REPORT — ${dayStr} ${dt} / ${hhmm}`,
     '',
-    ...visibleSummary,
+    ...visLines,
     '',
-    'FULL ROSTER BY NAME:',
-    ...rosterLines,
+    'FULL ROSTER:',
+    ...rosterPlain,
     '',
     `SUBMITTED BY: ${submittedBy || '______________________'}`,
   ].join('\n');
 
-  // Build interactive HTML version
-  const lineHtml = summaryDefs.map(d => {
-    if (d.key.startsWith('_sep')) return `<div style="height:8px"></div>`;
-    const isHidden = hidden.includes(d.key);
-    return `<div onclick="toggleLine('${d.key}')" style="
-      display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:6px;
-      cursor:pointer;font-family:'Courier New',monospace;font-size:12px;line-height:1.6;
-      color:${isHidden?'var(--text-3)':'var(--text)'};
-      background:${isHidden?'transparent':'var(--surface-alt)'};
-      text-decoration:${isHidden?'line-through':'none'};
-      transition:background .12s;
-      user-select:none" title="${isHidden?'Click to show':'Click to hide'}">
-      <span style="font-size:14px;flex-shrink:0">${isHidden?'○':'●'}</span>
-      <span style="flex:1">${d.text || '&nbsp;'}</span>
-      <span style="font-size:11px;color:var(--text-3)">${isHidden?'hidden':'visible'}</span>
+  // ── Beautiful HTML report ──────────────────────────────────────
+  const summaryHtml = summaryDefs.map(d => {
+    const isHid = hidden.includes(d.key);
+    const valColor = d.danger && d.val > 0 ? 'var(--danger-text)'
+                   : d.success && d.val > 0 ? 'var(--success-text)'
+                   : d.accent ? 'var(--accent)' : 'var(--text)';
+    return `<div class="rpt-summary-card ${isHid?'rpt-hidden':''}" onclick="toggleLine('${d.key}')" title="${isHid?'Click to show':'Click to hide'}">
+      <div class="rpt-eye">${isHid?'○':'●'}</div>
+      <div class="rpt-line-label">${d.label}</div>
+      <div class="rpt-line-val" style="color:${isHid?'var(--text-3)':valColor}">${d.val}</div>
     </div>`;
   }).join('');
 
-  const rosterHtml = rosterLines.map(l =>
-    `<div style="font-family:'Courier New',monospace;font-size:12px;line-height:1.7;color:var(--text);padding:1px 0">${l}</div>`
-  ).join('');
+  const rosterHtml = members.map(m => {
+    const st    = statuses.find(s => s.v === m.status);
+    const label = m.status ? (st ? st.label : m.status) : 'No status';
+    const statusColor = !m.status ? 'var(--text-3)'
+      : m.status === 'UA' ? 'var(--danger-text)'
+      : m.status === 'PRESENT' ? 'var(--success-text)'
+      : 'var(--text-2)';
+    const note = m.note ? `<span style="font-size:10px;color:var(--text-3);margin-left:4px">(${m.note})</span>` : '';
+    return `<div class="rpt-roster-row">
+      <span class="rpt-roster-rate">${m.rate||''}</span>
+      <span class="rpt-roster-name">${m.name}${note}</span>
+      <span class="rpt-roster-team">${m.sec||''}</span>
+      <span style="font-size:12px;font-weight:600;color:${statusColor}">${label}</span>
+    </div>`;
+  }).join('');
 
   const reportEl = document.getElementById('reportPre');
   if (reportEl) {
-    reportEl.style.fontFamily = 'inherit';
-    reportEl.style.fontSize   = 'inherit';
-    reportEl.style.background = 'transparent';
-    reportEl.style.padding    = '0';
-    reportEl.innerHTML = `
-      <div style="margin-bottom:4px">
-        <div style="font-family:'Courier New',monospace;font-size:13px;font-weight:600;color:var(--text);padding:8px;background:var(--surface-alt);border-radius:6px;margin-bottom:8px">
-          MUSTER REPORT — ${dt} / ${hhmm}
-        </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;padding:0 4px">
-          Click any line to show/hide it from the copied report
-        </div>
-        ${lineHtml}
-        <div style="height:12px"></div>
-        <div style="font-family:'Courier New',monospace;font-size:12px;font-weight:600;color:var(--text);padding:4px 8px">FULL ROSTER BY NAME:</div>
-        <div style="padding:4px 8px;background:var(--surface-alt);border-radius:6px">${rosterHtml}</div>
-      </div>`;
-    // store plain text for copy
+    reportEl.style.cssText = 'font-family:inherit;font-size:inherit;background:transparent;padding:0;border:none;border-radius:0;white-space:normal';
     reportEl.dataset.plain = plainText;
+    reportEl.innerHTML = `
+      <div class="rpt-header">
+        <div>
+          <div class="rpt-header-title">MUSTER REPORT</div>
+          <div class="rpt-header-dt">${dayStr} ${dt} &nbsp;·&nbsp; ${hhmm}</div>
+        </div>
+        <i class="ti ti-clipboard-check" style="font-size:28px;opacity:.6"></i>
+      </div>
+
+      <div class="rpt-hint">Tap any card to hide/show it from the copied report</div>
+      <div class="rpt-summary">${summaryHtml}</div>
+
+      <div style="font-size:12px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px">
+        Full roster
+      </div>
+      <div class="rpt-roster">
+        <div class="rpt-roster-hdr">
+          <span>Rate</span><span>Name</span><span>Team</span><span>Status</span>
+        </div>
+        ${rosterHtml}
+      </div>`;
   }
 
-  const submitterOpts = getSubmitters().map(s =>
-    `<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('');
   const subEl = document.getElementById('submittedByRow');
   if (subEl) {
     subEl.innerHTML = `
       <span style="font-size:13px;font-weight:500;color:var(--text-2)">Submitted by:</span>
-      <select style="font-size:13px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)" onchange="handleSubmitterChange(this.value)">
+      <select style="font-size:13px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);width:auto" onchange="handleSubmitterChange(this.value)">
         <option value="">-- Select --</option>
         ${submitterOpts}
         <option value="__new__">+ Add new...</option>
       </select>
-      ${submittedBy ? `<span style="font-size:13px;color:var(--text-2)">· Report will show: <strong>${submittedBy}</strong></span>` : ''}`;
+      ${submittedBy?`<span style="font-size:12px;color:var(--success-text);font-weight:500">✓ ${submittedBy}</span>`:''}`;
   }
 
   const warn = document.getElementById('reportWarn');
   if (warn) {
-    if (pending > 0) { warn.innerHTML = `<i class="ti ti-alert-triangle"></i> ${pending} member(s) have no status entered.`; warn.style.display='flex'; }
+    if (pending > 0) { warn.innerHTML = `<i class="ti ti-alert-triangle"></i> ${pending} member(s) have no status yet.`; warn.style.display='flex'; }
     else warn.style.display = 'none';
   }
 
   if (document.getElementById('tab-report').style.display === 'none')
     switchTab('report', document.querySelectorAll('.tab')[2]);
 }
-
 
 function copyReport() {
   const el  = document.getElementById('reportPre');
