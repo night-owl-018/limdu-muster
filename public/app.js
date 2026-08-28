@@ -140,7 +140,7 @@ async function saveEdit() {
 
 // ── Render ───────────────────────────────────────────────────────────────────
 function sections() {
-  return [...new Set(members.map(m => m.sec).filter(Boolean))].sort((a,b) => a.localeCompare(b,undefined,{numeric:true}));
+  return [...new Set(members.map(m => m.sec).filter(Boolean))].sort((a,b) => a.localeCompare(b));
 }
 
 function renderStats() {
@@ -252,8 +252,24 @@ function render() {
           <div class="card-top">
             ${pill(m.status)}
             <span class="card-name">${m.name}</span>
-            <span class="card-meta">${m.rate||''}${m.wc?' · '+m.wc:''}</span>
+            <span class="card-meta">${m.rate||''}</span>
             <button class="icon sm" onclick="editingNote=${editingNote===m.id?null:m.id};render()" title="Add note" style="margin-left:auto"><i class="ti ti-pencil" aria-hidden="true"></i></button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
+              <span>SECTION</span>
+              <input type="text" value="${(m.sec||'').replace(/"/g,'&quot;')}" placeholder="—"
+                style="width:80px;font-size:12px;padding:3px 7px"
+                onblur="saveField(${m.id},'sec',this.value);render()"
+                onkeydown="if(event.key==='Enter')this.blur()">
+            </label>
+            <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
+              <span>WORK CENTER</span>
+              <input type="text" value="${(m.wc||'').replace(/"/g,'&quot;')}" placeholder="—"
+                style="width:110px;font-size:12px;padding:3px 7px"
+                onblur="saveField(${m.id},'wc',this.value)"
+                onkeydown="if(event.key==='Enter')this.blur()">
+            </label>
           </div>
           ${noteEl}
         </div>
