@@ -69,6 +69,16 @@ const server = http.createServer(async (req, res) => {
     return json(res, m, 201);
   }
 
+  if (req.method === 'POST' && url === '/api/members/reorder') {
+    const body = await readBody(req).catch(() => null);
+    if (!body || !Array.isArray(body.order)) return json(res, { error: 'Invalid payload' }, 400);
+    const data = readData();
+    const map  = new Map(data.members.map(m => [m.id, m]));
+    data.members = body.order.map(id => map.get(id)).filter(Boolean);
+    writeData(data);
+    return json(res, { ok: true });
+  }
+
   if (req.method === 'POST' && url === '/api/members/bulk') {
     const body = await readBody(req).catch(() => null);
     if (!body || !Array.isArray(body.members)) return json(res, { error: 'Invalid payload' }, 400);
