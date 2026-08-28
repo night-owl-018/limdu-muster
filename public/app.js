@@ -1,24 +1,101 @@
 'use strict';
 
-const STATUSES = [
-  { v: 'PRESENT',    label: 'Present' },
-  { v: 'PHONE',      label: 'Phone muster' },
-  { v: 'TEXT',       label: 'Text muster' },
-  { v: 'APPT',       label: 'Appointment' },
-  { v: 'SICK CALL',  label: 'Sick call' },
-  { v: 'SIQ',        label: 'SIQ' },
-  { v: 'LIGHT DUTY', label: 'Light duty' },
-  { v: 'LEAVE',      label: 'Leave' },
-  { v: 'TAD',        label: 'TAD' },
-  { v: 'SCHOOL',     label: 'School' },
-  { v: 'WATCH',      label: 'Watch' },
-  { v: 'POST-WATCH', label: 'Post-watch' },
-  { v: 'LIBERTY',    label: 'Liberty' },
-  { v: 'LIMDU',      label: 'LIMDU' },
-  { v: 'UA',         label: 'UA' },
+const DEFAULT_STATUSES = [
+  { v: 'PRESENT',       label: 'Present' },
+  { v: 'PHONE',         label: 'Phone muster' },
+  { v: 'TEXT',          label: 'Text muster' },
+  { v: 'APPT',          label: 'Appointment' },
+  { v: 'SICK CALL',     label: 'Sick call' },
+  { v: 'SIQ',           label: 'SIQ' },
+  { v: 'LIGHT DUTY',    label: 'Light duty' },
+  { v: 'LEAVE',         label: 'Leave' },
+  { v: 'TAD',           label: 'TAD' },
+  { v: 'SCHOOL',        label: 'School' },
+  { v: 'WATCH',         label: 'Watch' },
+  { v: 'POST-WATCH',    label: 'Post-watch' },
+  { v: 'LIBERTY',       label: 'Liberty' },
+  { v: 'LIMDU',         label: 'LIMDU' },
+  { v: 'RPT N85',       label: 'Report to N85 Office' },
+  { v: 'UA',            label: 'UA' },
 ];
 
-const STATUS_OPTS = STATUSES.map(s => `<option value="${s.v}">${s.label}</option>`).join('');
+function getStatuses() {
+  const extra = JSON.parse(localStorage.getItem('extra_statuses') || '[]');
+  return [...DEFAULT_STATUSES, ...extra.map(v => ({ v, label: v }))];
+}
+
+function addStatus(v) {
+  const extra = JSON.parse(localStorage.getItem('extra_statuses') || '[]');
+  if (!extra.includes(v)) { extra.push(v); localStorage.setItem('extra_statuses', JSON.stringify(extra)); }
+}
+
+function STATUSES() { return getStatuses(); }
+
+// Predefined options — extras saved to localStorage so they persist
+const DEFAULT_TEAMS = ['BLUE', 'RED', 'WHITE'];
+const DEFAULT_DIVS  = ['N85'];
+
+function getTeams() {
+  const extra = JSON.parse(localStorage.getItem('extra_teams') || '[]');
+  return [...new Set([...DEFAULT_TEAMS, ...extra])];
+}
+function getDivs() {
+  const extra = JSON.parse(localStorage.getItem('extra_divs') || '[]');
+  return [...new Set([...DEFAULT_DIVS, ...extra])];
+}
+function addTeam(v) {
+  const extra = JSON.parse(localStorage.getItem('extra_teams') || '[]');
+  if (!extra.includes(v)) { extra.push(v); localStorage.setItem('extra_teams', JSON.stringify(extra)); }
+}
+function addDiv(v) {
+  const extra = JSON.parse(localStorage.getItem('extra_divs') || '[]');
+  if (!extra.includes(v)) { extra.push(v); localStorage.setItem('extra_divs', JSON.stringify(extra)); }
+}
+
+// Build a select element for team or division, fires callback(value) on change
+function makeSelect(type, currentVal, onchange, extraStyle='') {
+  const opts = type === 'team' ? getTeams() : getDivs();
+  const safeVal = (currentVal || '').toUpperCase();
+  const optsHtml = [
+    `<option value="">-- ${type === 'team' ? 'Team' : 'Division'} --</option>`,
+    ...opts.map(o => `<option value="${o}" ${safeVal === o ? 'selected' : ''}>${o}</option>`),
+    `<option value="__new__">+ Add new...</option>`,
+  ].join('');
+  const id = `sel_${type}_${Math.random().toString(36).slice(2)}`;
+  // We attach handler via dataset after render; use inline onchange string
+  return `<select id="${id}" style="font-size:12px;padding:3px 6px;height:28px;${extraStyle}"
+    onchange="handleSelectChange('${id}','${type}',this.value,${JSON.stringify(onchange)})">${optsHtml}</select>`;
+}
+
+// Called when any team/division select changes
+async function handleSelectChange(selId, type, value, callbackStr) {
+  if (value === '__new__') {
+    const label = type === 'team' ? 'team' : 'division';
+    const custom = prompt(`Enter new ${label} name:`);
+    if (!custom || !custom.trim()) {
+      document.getElementById(selId).value = '';
+      return;
+    }
+    const upper = custom.trim().toUpperCase();
+    if (type === 'team') addTeam(upper);
+    else addDiv(upper);
+    // run the real callback with the new value
+    await runCallback(callbackStr, upper);
+    render(); renderRosterList();
+    return;
+  }
+  await runCallback(callbackStr, value);
+}
+
+async function runCallback(str, value) {
+  // callbackStr format: "saveField:ID:FIELD" or "setMemberField:ID:FIELD"
+  const [fn, id, field] = str.split(':');
+  if (fn === 'saveField') await saveField(parseInt(id), field, value);
+  if (fn === 'setFormField') {
+    const el = document.getElementById(field);
+    if (el) el.value = value;
+  }
+}
 
 let members = [];
 let editingNote = null;
@@ -41,6 +118,18 @@ async function load() {
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
+async function handleStatusChange(id, value, el) {
+  if (value === '__new_status__') {
+    const custom = prompt('Enter new status name:');
+    if (!custom || !custom.trim()) { el.value = members.find(m=>m.id===id)?.status || ''; return; }
+    const upper = custom.trim().toUpperCase();
+    addStatus(upper);
+    await setStatus(id, upper);
+    return;
+  }
+  await setStatus(id, value);
+}
+
 async function setStatus(id, v) {
   await api('PUT', `/api/members/${id}`, { status: v });
   const m = members.find(x => x.id === id);
@@ -62,8 +151,8 @@ async function addMember() {
   const m = await api('POST', '/api/members', {
     name,
     rate: document.getElementById('nRate').value.trim(),
-    sec:  document.getElementById('nSec').value.trim(),
-    wc:   document.getElementById('nWC').value.trim(),
+    sec:  resolveSelect('nSec', 'team'),
+    wc:   resolveSelect('nWC', 'div'),
   });
   members.push(m);
   ['nName','nRate','nSec','nWC'].forEach(id => document.getElementById(id).value = '');
@@ -117,24 +206,50 @@ function openEdit(id) {
   editingId = id;
   document.getElementById('eName').value = m.name;
   document.getElementById('eRate').value = m.rate;
-  document.getElementById('eSec').value = m.sec;
-  document.getElementById('eWC').value = m.wc;
+  // pre-select or add current value to team select
+  const eSec = document.getElementById('eSec');
+  if (m.sec && ![...eSec.options].find(o => o.value === m.sec)) {
+    eSec.insertBefore(new Option(m.sec, m.sec), eSec.lastElementChild);
+  }
+  eSec.value = m.sec || '';
+  // pre-select or add current value to division select
+  const eWC = document.getElementById('eWC');
+  if (m.wc && ![...eWC.options].find(o => o.value === m.wc)) {
+    eWC.insertBefore(new Option(m.wc, m.wc), eWC.lastElementChild);
+  }
+  eWC.value = m.wc || '';
   document.getElementById('editModal').style.display = 'flex';
   document.getElementById('eName').focus();
 }
 
-function closeEdit() { editingId = null; document.getElementById('editModal').style.display = 'none'; }
+function resolveSelect(id, type) {
+  const el = document.getElementById(id);
+  if (!el) return '';
+  if (el.value === '__new_team__' || el.value === '__new_div__') {
+    const label = type === 'team' ? 'team' : 'division';
+    const custom = prompt(`Enter new ${label} name:`);
+    if (!custom || !custom.trim()) { el.value = ''; return ''; }
+    const upper = custom.trim().toUpperCase();
+    if (type === 'team') addTeam(upper);
+    else addDiv(upper);
+    // Add to select and pick it
+    const opt = new Option(upper, upper, true, true);
+    el.insertBefore(opt, el.lastElementChild);
+    el.value = upper;
+    return upper;
+  }
+  return el.value;
+}
 
 async function saveEdit() {
   if (!editingId) return;
   const name = document.getElementById('eName').value.trim();
   if (!name) return;
-  await api('PUT', `/api/members/${editingId}`, {
-    name, rate: document.getElementById('eRate').value.trim(),
-    sec: document.getElementById('eSec').value.trim(), wc: document.getElementById('eWC').value.trim(),
-  });
+  const sec = resolveSelect('eSec', 'team');
+  const wc  = resolveSelect('eWC', 'div');
+  await api('PUT', `/api/members/${editingId}`, { name, rate: document.getElementById('eRate').value.trim(), sec, wc });
   const m = members.find(x => x.id === editingId);
-  if (m) { m.name = name.toUpperCase(); m.rate = document.getElementById('eRate').value.trim().toUpperCase(); m.sec = document.getElementById('eSec').value.trim(); m.wc = document.getElementById('eWC').value.trim().toUpperCase(); }
+  if (m) { m.name = name.toUpperCase(); m.rate = document.getElementById('eRate').value.trim().toUpperCase(); m.sec = sec; m.wc = wc.toUpperCase(); }
   closeEdit(); render(); renderRosterList(); toast('Member updated');
 }
 
@@ -157,7 +272,7 @@ function renderStats() {
 
 function pill(status) {
   if (!status) return '<span class="pill pill-none">No status</span>';
-  const st = STATUSES.find(s => s.v === status);
+  const st = STATUSES().find(s => s.v === status);
   return `<span class="pill pill-${status}">${st ? st.label : status}</span>`;
 }
 
@@ -193,14 +308,14 @@ function render() {
   const secSel = document.getElementById('filterSec');
   if (secSel) {
     const cur = secSel.value;
-    secSel.innerHTML = '<option value="">All sections</option>';
-    sections().forEach(s => { const o = new Option('Section '+s,s); if(s===cur)o.selected=true; secSel.add(o); });
+    secSel.innerHTML = '<option value="">All teams</option>';
+    sections().forEach(s => { const o = new Option('Team '+s,s); if(s===cur)o.selected=true; secSel.add(o); });
   }
   const stSel = document.getElementById('filterSt');
   if (stSel) {
     const cur = stSel.value;
     stSel.innerHTML = '<option value="">All statuses</option>';
-    STATUSES.forEach(s => { const o = new Option(s.label,s.v); if(s.v===cur)o.selected=true; stSel.add(o); });
+    STATUSES().forEach(s => { const o = new Option(s.label,s.v); if(s.v===cur)o.selected=true; stSel.add(o); }); stSel.add(new Option('+ Add new...','__new_status__'));
   }
 
   const list = members.filter(m => {
@@ -223,8 +338,8 @@ function render() {
       <div class="add-grid">
         <div class="field"><label>Last, First MI</label><input type="text" id="mName" placeholder="SMITH, JOHN A"></div>
         <div class="field"><label>Rate</label><input type="text" id="mRate" placeholder="STG2" style="max-width:90px"></div>
-        <div class="field"><label>Section</label><input type="text" id="mSec" placeholder="1" style="max-width:70px"></div>
-        <div class="field"><label>Work center</label><input type="text" id="mWC" placeholder="SONAR"></div>
+        <div class="field"><label>Team</label>${makeSelect('team', '', 'setFormField:x:mSec', 'min-width:90px')}<input type="hidden" id="mSec"></div>
+        <div class="field"><label>Division</label>${makeSelect('div', '', 'setFormField:x:mWC', 'min-width:100px')}<input type="hidden" id="mWC"></div>
         <div class="field" style="display:flex;align-items:flex-end;gap:6px">
           <button class="primary" onclick="addFromMuster()"><i class="ti ti-check" aria-hidden="true"></i> Add</button>
           <button onclick="toggleMusterAdd()">Cancel</button>
@@ -255,34 +370,29 @@ function render() {
             <span class="card-meta">${m.rate||''}</span>
             <button class="icon sm" onclick="editingNote=${editingNote===m.id?null:m.id};render()" title="Add note" style="margin-left:auto"><i class="ti ti-pencil" aria-hidden="true"></i></button>
           </div>
-          <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
             <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-              <span>SECTION</span>
-              <input type="text" value="${(m.sec||'').replace(/"/g,'&quot;')}" placeholder="—"
-                style="width:80px;font-size:12px;padding:3px 7px"
-                onblur="saveField(${m.id},'sec',this.value);render()"
-                onkeydown="if(event.key==='Enter')this.blur()">
+              <span>TEAM</span>
+              ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
             </label>
             <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
-              <span>WORK CENTER</span>
-              <input type="text" value="${(m.wc||'').replace(/"/g,'&quot;')}" placeholder="—"
-                style="width:110px;font-size:12px;padding:3px 7px"
-                onblur="saveField(${m.id},'wc',this.value)"
-                onkeydown="if(event.key==='Enter')this.blur()">
+              <span>DIVISION</span>
+              ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
             </label>
           </div>
           ${noteEl}
         </div>
         <div class="card-actions">
-          <select class="status-select sm" onchange="setStatus(${m.id},this.value)">
+          <select class="status-select sm" onchange="handleStatusChange(${m.id},this.value,this)">
             <option value="" ${!m.status?'selected':''}>-- status --</option>
-            ${STATUSES.map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}</option>`).join('')}
+            ${STATUSES().map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}</option>`).join('')}
+            <option value="__new_status__">+ Add new...</option>
           </select>
           <button class="icon del sm" onclick="deleteMember(${m.id})" title="Remove member"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
       </div>`;
     }).join('');
-    return `<div class="sec-hdr"><span class="sec-hdr-label">Section ${sk}</span><span class="sec-hdr-count">${bySec[sk].length}</span><hr></div><div class="roster">${cards}</div>`;
+    return `<div class="sec-hdr"><span class="sec-hdr-label">Team ${sk}</span><span class="sec-hdr-count">${bySec[sk].length}</span><hr></div><div class="roster">${cards}</div>`;
   }).join('');
 
   rosterEl.innerHTML = addPanel + rows;
@@ -311,20 +421,14 @@ function renderRosterList() {
           <span class="card-name">${m.name}</span>
           <span class="card-meta">${m.rate||''}</span>
         </div>
-        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-          <label style="font-size:11px;color:var(--text-3);display:flex;flex-direction:column;gap:2px">
-            SECTION
-            <input type="text" value="${m.sec||''}" placeholder="—"
-              style="width:60px;font-size:13px;padding:4px 8px"
-              onblur="saveField(${m.id},'sec',this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()">
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+          <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
+            TEAM
+            ${makeSelect('team', m.sec, `saveField:${m.id}:sec`)}
           </label>
-          <label style="font-size:11px;color:var(--text-3);display:flex;flex-direction:column;gap:2px">
-            WORK CENTER
-            <input type="text" value="${m.wc||''}" placeholder="—"
-              style="width:120px;font-size:13px;padding:4px 8px"
-              onblur="saveField(${m.id},'wc',this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()">
+          <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:5px">
+            DIVISION
+            ${makeSelect('div', m.wc, `saveField:${m.id}:wc`)}
           </label>
         </div>
       </div>
@@ -349,7 +453,7 @@ function generateReport() {
 
   const exceptions = members.filter(m => m.status && m.status !== 'PRESENT');
   const byLines = exceptions.length
-    ? exceptions.map(m => { const st = STATUSES.find(s=>s.v===m.status); return `  ${(st?st.label.toUpperCase():'???').padEnd(13)} - ${m.name}${m.note?' ('+m.note+')':''}`; }).join('\n')
+    ? exceptions.map(m => { const st = STATUSES().find(s=>s.v===m.status); return `  ${(st?st.label.toUpperCase():'???').padEnd(13)} - ${m.name}${m.note?' ('+m.note+')':''}`; }).join('\n')
     : '  (all present)';
 
   const report = [
@@ -369,7 +473,12 @@ function generateReport() {
     `WATCH/POST-WATCH: ${cnt('WATCH','POST-WATCH')}`,
     `LIBERTY:          ${cnt('LIBERTY')}`,
     `LIMDU:            ${cnt('LIMDU')}`,
+    `RPT N85 OFFICE:   ${cnt('RPT N85')}`,
     `UA:               ${ua}`,
+    // any custom statuses added by user
+    ...getStatuses()
+      .filter(s => !['PRESENT','PHONE','TEXT','APPT','SICK CALL','SIQ','LIGHT DUTY','LEAVE','TAD','SCHOOL','WATCH','POST-WATCH','LIBERTY','LIMDU','RPT N85','UA'].includes(s.v))
+      .map(s => `${s.label.toUpperCase().padEnd(17)} ${cnt(s.v)}`),
     '',
     'BY NAME:',
     byLines,
