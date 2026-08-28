@@ -615,6 +615,154 @@ function toggleLine(key) {
   generateReport();
 }
 
+function generateReport() {
+  const now    = new Date();
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dt     = String(now.getDate()).padStart(2,'0') + months[now.getMonth()] + String(now.getFullYear()).slice(2);
+  const hhmm   = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+
+  const cnt     = (...vs) => members.filter(m => vs.includes(m.status)).length;
+  const ua      = cnt('UA');
+  const pending = members.filter(m => !m.status).length;
+  const acct    = members.length - ua - pending;
+  const statuses = getStatuses();
+  const hidden   = getHidden();
+
+  const summaryDefs = [
+    { key:'ASSIGNED',  label:'Assigned',        val: members.length },
+    { key:'ACCOUNTED', label:'Accounted For',    val: acct },
+    { key:'UNACCT',    label:'Unaccounted',      val: ua + pending },
+    { key:'_div' },
+    { key:'PRESENT',   label:'Present',          val: cnt('PRESENT') },
+    { key:'PHONETEXT', label:'Phone / Text',     val: cnt('PHONE','TEXT') },
+    { key:'APPT',      label:'Appt / Sick Call', val: cnt('APPT','SICK CALL') },
+    { key:'SIQ',       label:'SIQ',              val: cnt('SIQ') },
+    { key:'LEAVE',     label:'Leave',            val: cnt('LEAVE') },
+    { key:'TAD',       label:'TAD',              val: cnt('TAD') },
+    { key:'POSTWATCH', label:'Post-Watch',       val: cnt('POST-WATCH') },
+    { key:'LIBERTY',   label:'Liberty',          val: cnt('LIBERTY') },
+    { key:'RPTN85',    label:'Rpt N85 Office',   val: cnt('RPT N85') },
+    { key:'UA',        label:'UA',               val: ua },
+    ...getStatuses().filter(s => !CORE_STATUS_VALS.includes(s.v))
+      .map(s => ({ key:'CUSTOM_'+s.v, label:s.label, val:cnt(s.v) })),
+  ];
+
+  // Plain text for copy
+  const plainLines = summaryDefs
+    .filter(d => !d.key.startsWith('_') && !hidden.includes(d.key))
+    .map(d => `${d.label.padEnd(20)} ${String(d.val).padStart(3)}`);
+
+  const maxR = Math.max(...members.map(m=>(m.rate||'').length), 4);
+  const maxN = Math.max(...members.map(m=>m.name.length), 20);
+  const rosterPlain = members.map(m => {
+    const st    = statuses.find(s => s.v === m.status);
+    const label = m.status ? (st ? st.label.toUpperCase() : m.status) : 'NO STATUS';
+    const note  = m.note ? ` (${m.note})` : '';
+    return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label}${note}`;
+  });
+
+  const plainText = [
+    `MUSTER REPORT`,
+    `${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,
+    '',
+    ...plainLines,
+    '',
+    'ROSTER:',
+    ...rosterPlain,
+    '',
+    `SUBMITTED BY: ${submittedBy || '______________________'}`,
+  ].join('\n');
+
+  // ── HTML ──────────────────────────────────────────────────────
+  const summaryHtml = summaryDefs.map(d => {
+    if (d.key.startsWith('_')) return `<div style="height:1px;background:var(--border);margin:6px 0"></div>`;
+    const isHid = hidden.includes(d.key);
+    const danger  = (d.key==='UNACCT'||d.key==='UA') && d.val > 0;
+    const success = d.key==='PRESENT' && d.val > 0;
+    const valColor = isHid ? 'var(--text-3)' : danger ? 'var(--danger-text)' : success ? 'var(--success-text)' : 'var(--text)';
+    return `
+      <div onclick="toggleLine('${d.key}')" style="
+        display:flex;align-items:center;justify-content:space-between;
+        padding:5px 8px;border-radius:6px;cursor:pointer;user-select:none;
+        opacity:${isHid?.35:1};transition:opacity .15s,background .12s;
+        background:${isHid?'transparent':'transparent'}"
+        onmouseover="this.style.background='var(--surface-alt)'"
+        onmouseout="this.style.background='transparent'">
+        <span style="font-size:13px;color:${isHid?'var(--text-3)':'var(--text-2)'};text-decoration:${isHid?'line-through':'none'}">${d.label}</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:${valColor}">${d.val}</span>
+          <span style="font-size:10px;color:var(--text-3);width:42px;text-align:right">${isHid?'hidden':'click to hide'}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  const rosterHtml = members.map((m,i) => {
+    const st      = statuses.find(s => s.v === m.status);
+    const label   = m.status ? (st ? st.label : m.status) : 'No status';
+    const danger  = m.status === 'UA';
+    const success = m.status === 'PRESENT';
+    const muted   = !m.status;
+    const statusColor = danger ? 'var(--danger-text)' : success ? 'var(--success-text)' : muted ? 'var(--text-3)' : 'var(--text-2)';
+    const note    = m.note ? `<span style="font-size:11px;color:var(--text-3);margin-left:4px">· ${m.note}</span>` : '';
+    const bg      = i%2===0 ? 'transparent' : 'var(--surface-alt)';
+    return `<div style="display:grid;grid-template-columns:44px 1fr 100px;align-items:center;padding:6px 8px;background:${bg};border-radius:4px;gap:4px">
+      <span style="font-size:11px;font-weight:600;color:var(--text-3);font-family:monospace">${m.rate||''}</span>
+      <span style="font-size:13px;color:var(--text)">${m.name}${note}</span>
+      <span style="font-size:12px;font-weight:500;color:${statusColor};text-align:right">${label}</span>
+    </div>`;
+  }).join('');
+
+  const submitterOpts = getSubmitters().map(s =>
+    `<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('');
+
+  const reportEl = document.getElementById('reportPre');
+  if (reportEl) {
+    reportEl.dataset.plain = plainText;
+    reportEl.style.cssText = 'font-family:inherit;font-size:inherit;background:transparent;padding:0;border:none;white-space:normal';
+    reportEl.innerHTML = `
+      <div style="margin-bottom:12px">
+        <div style="font-size:16px;font-weight:700;color:var(--text);letter-spacing:.02em">Muster Report</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()} · ${hhmm}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;padding:12px;background:var(--surface-alt);border-radius:var(--radius)">
+        <div><div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Assigned</div><div style="font-size:22px;font-weight:700;color:var(--text)">${members.length}</div></div>
+        <div><div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Accounted</div><div style="font-size:22px;font-weight:700;color:var(--success-text)">${acct}</div></div>
+        <div><div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Pending</div><div style="font-size:22px;font-weight:700;color:${(ua+pending)>0?'var(--danger-text)':'var(--text)'}">${ua+pending}</div></div>
+      </div>
+
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Status breakdown · click any row to hide from report</div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px">
+        ${summaryHtml}
+      </div>
+
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Full roster · ${members.length} members</div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;padding:4px">
+        ${rosterHtml}
+      </div>`;
+  }
+
+  const subEl = document.getElementById('submittedByRow');
+  if (subEl) subEl.innerHTML = `
+    <span style="font-size:13px;font-weight:500;color:var(--text-2)">Submitted by</span>
+    <select style="font-size:13px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);width:auto" onchange="handleSubmitterChange(this.value)">
+      <option value="">-- Select --</option>
+      ${submitterOpts}
+      <option value="__new__">+ Add new...</option>
+    </select>
+    ${submittedBy?`<span style="font-size:12px;color:var(--success-text);font-weight:600">✓ ${submittedBy}</span>`:''}`;
+
+  const warn = document.getElementById('reportWarn');
+  if (warn) {
+    if (pending>0) { warn.innerHTML=`<i class="ti ti-alert-triangle"></i> ${pending} member(s) still have no status.`; warn.style.display='flex'; }
+    else warn.style.display='none';
+  }
+
+  if (document.getElementById('tab-report').style.display==='none')
+    switchTab('report', document.querySelectorAll('.tab')[2]);
+}
+
 let showTeamDiv = localStorage.getItem('showTeamDiv') !== 'false';
 
 function toggleTeamDiv() {
