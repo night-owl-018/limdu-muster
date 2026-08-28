@@ -161,13 +161,35 @@ function pill(status) {
   return `<span class="pill pill-${status}">${st ? st.label : status}</span>`;
 }
 
+let musterAddOpen = false;
+
+function toggleMusterAdd() {
+  musterAddOpen = !musterAddOpen;
+  render();
+  if (musterAddOpen) setTimeout(() => { const el = document.getElementById('mName'); if (el) el.focus(); }, 50);
+}
+
+async function addFromMuster() {
+  const name = (document.getElementById('mName').value || '').trim();
+  if (!name) { document.getElementById('mName').focus(); return; }
+  const m = await api('POST', '/api/members', {
+    name,
+    rate: (document.getElementById('mRate').value || '').trim(),
+    sec:  (document.getElementById('mSec').value || '').trim(),
+    wc:   (document.getElementById('mWC').value || '').trim(),
+  });
+  members.push(m);
+  musterAddOpen = false;
+  render(); renderRosterList(); renderStats();
+  toast('Member added');
+}
+
 function render() {
   renderStats();
   const q  = (document.getElementById('search')||{value:''}).value.toLowerCase();
   const fs = (document.getElementById('filterSec')||{value:''}).value;
   const ft = (document.getElementById('filterSt')||{value:''}).value;
 
-  // rebuild filter dropdowns
   const secSel = document.getElementById('filterSec');
   if (secSel) {
     const cur = secSel.value;
@@ -193,10 +215,30 @@ function render() {
   const keys = Object.keys(bySec).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
 
   const rosterEl = document.getElementById('roster');
-  if (!list.length) { rosterEl.innerHTML = `<div class="empty"><i class="ti ti-users-group" aria-hidden="true"></i><p>${members.length ? 'No members match the filter.' : 'No members yet. Go to Manage roster to add people.'}</p></div>`; return; }
 
-  rosterEl.innerHTML = keys.map(sk => {
-    const rows = bySec[sk].map(m => {
+  // Quick-add panel at top of muster tab
+  const addPanel = musterAddOpen ? `
+    <div class="add-panel" style="margin-bottom:1rem">
+      <div class="add-panel-title"><i class="ti ti-user-plus" aria-hidden="true"></i> Add member</div>
+      <div class="add-grid">
+        <div class="field"><label>Last, First MI</label><input type="text" id="mName" placeholder="SMITH, JOHN A"></div>
+        <div class="field"><label>Rate</label><input type="text" id="mRate" placeholder="STG2" style="max-width:90px"></div>
+        <div class="field"><label>Section</label><input type="text" id="mSec" placeholder="1" style="max-width:70px"></div>
+        <div class="field"><label>Work center</label><input type="text" id="mWC" placeholder="SONAR"></div>
+        <div class="field" style="display:flex;align-items:flex-end;gap:6px">
+          <button class="primary" onclick="addFromMuster()"><i class="ti ti-check" aria-hidden="true"></i> Add</button>
+          <button onclick="toggleMusterAdd()">Cancel</button>
+        </div>
+      </div>
+    </div>` : '';
+
+  if (!list.length) {
+    rosterEl.innerHTML = addPanel + `<div class="empty"><i class="ti ti-users-group" aria-hidden="true"></i><p>${members.length ? 'No members match the filter.' : 'No members yet. Hit Add member to get started.'}</p></div>`;
+    return;
+  }
+
+  const rows = keys.map(sk => {
+    const cards = bySec[sk].map(m => {
       const noteEl = editingNote === m.id
         ? `<div class="note-input-row"><input type="text" placeholder="Return date, verifier, detail..." value="${(m.note||'').replace(/"/g,'&quot;')}"
             onchange="saveNote(${m.id},this.value)" onblur="saveNote(${m.id},this.value)">
@@ -220,11 +262,24 @@ function render() {
             <option value="" ${!m.status?'selected':''}>-- status --</option>
             ${STATUSES.map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}</option>`).join('')}
           </select>
+          <button class="icon del sm" onclick="deleteMember(${m.id})" title="Remove member"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
       </div>`;
     }).join('');
-    return `<div class="sec-hdr"><span class="sec-hdr-label">Section ${sk}</span><span class="sec-hdr-count">${bySec[sk].length}</span><hr></div><div class="roster">${rows}</div>`;
+    return `<div class="sec-hdr"><span class="sec-hdr-label">Section ${sk}</span><span class="sec-hdr-count">${bySec[sk].length}</span><hr></div><div class="roster">${cards}</div>`;
   }).join('');
+
+  rosterEl.innerHTML = addPanel + rows;
+}
+
+// Inline field edit on roster tab
+async function saveField(id, field, value) {
+  const payload = {};
+  payload[field] = value;
+  await api('PUT', `/api/members/${id}`, payload);
+  const m = members.find(x => x.id === id);
+  if (m) m[field] = field === 'name' || field === 'rate' || field === 'wc' ? value.toUpperCase() : value;
+  renderRosterList();
 }
 
 function renderRosterList() {
@@ -233,12 +288,28 @@ function renderRosterList() {
   if (!el) return;
   if (cnt) cnt.textContent = `(${members.length})`;
   if (!members.length) { el.innerHTML = '<div class="empty"><i class="ti ti-users" aria-hidden="true"></i><p>No members yet.</p></div>'; return; }
-  el.innerHTML = `<div class="roster" style="margin-bottom:1rem">${members.map(m=>`
-    <div class="card">
+  el.innerHTML = `<div class="roster" style="margin-bottom:1rem">${members.map(m => `
+    <div class="card" style="flex-wrap:wrap;gap:8px">
       <div class="card-body">
-        <div class="card-top">
+        <div class="card-top" style="flex-wrap:wrap">
           <span class="card-name">${m.name}</span>
-          <span class="card-meta">${[m.rate,m.sec?'Sec '+m.sec:'',m.wc].filter(Boolean).join(' · ')}</span>
+          <span class="card-meta">${m.rate||''}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+          <label style="font-size:11px;color:var(--text-3);display:flex;flex-direction:column;gap:2px">
+            SECTION
+            <input type="text" value="${m.sec||''}" placeholder="—"
+              style="width:60px;font-size:13px;padding:4px 8px"
+              onblur="saveField(${m.id},'sec',this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()">
+          </label>
+          <label style="font-size:11px;color:var(--text-3);display:flex;flex-direction:column;gap:2px">
+            WORK CENTER
+            <input type="text" value="${m.wc||''}" placeholder="—"
+              style="width:120px;font-size:13px;padding:4px 8px"
+              onblur="saveField(${m.id},'wc',this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()">
+          </label>
         </div>
       </div>
       <div class="card-actions">
