@@ -30,7 +30,7 @@
       <div class="toolbar">
         <div class="toolbar-left">
           <input class="sm" style="max-width:220px" type="text" id="search" placeholder="Search name or rate..." oninput="render()">
-          <select class="sm" id="filterSec" onchange="render()"><option value="">All sections</option></select>
+          <select class="sm" id="filterSec" onchange="render()"><option value="">All teams</option></select>
           <select class="sm" id="filterSt" onchange="render()"><option value="">All statuses</option></select>
         </div>
         <div class="toolbar-right">
@@ -54,8 +54,8 @@
         <div class="add-grid">
           <div class="field"><label>Last, First MI</label><input type="text" id="nName" placeholder="SMITH, JOHN A"></div>
           <div class="field"><label>Rate</label><input type="text" id="nRate" placeholder="STG2" style="max-width:90px"></div>
-          <div class="field"><label>Section</label><input type="text" id="nSec" placeholder="1" style="max-width:70px"></div>
-          <div class="field"><label>Work center</label><input type="text" id="nWC" placeholder="SONAR"></div>
+          <div class="field"><label>Team</label><select id="nSec" style="font-size:13px"><option value="">-- Team --</option><option>BLUE</option><option>RED</option><option>WHITE</option><option value="__new_team__">+ Add new...</option></select></div>
+          <div class="field"><label>Division</label><select id="nWC" style="font-size:13px"><option value="">-- Division --</option><option>N85</option><option value="__new_div__">+ Add new...</option></select></div>
           <div class="field" style="display:flex;align-items:flex-end;gap:6px">
             <button class="primary" onclick="addMember()"><i class="ti ti-check" aria-hidden="true"></i> Add</button>
             <button onclick="toggleAddPanel()">Cancel</button>
@@ -68,7 +68,7 @@
       <div class="import-panel">
         <h3><i class="ti ti-table-import" aria-hidden="true"></i> Bulk import</h3>
         <p>Paste your roster below — one person per line. Columns separated by commas or tabs.</p>
-        <div class="import-example">Last Name, First MI &nbsp;·&nbsp; Rate &nbsp;·&nbsp; Section &nbsp;·&nbsp; Work Center<br>
+        <div class="import-example">Last Name, First MI &nbsp;·&nbsp; Rate &nbsp;·&nbsp; Team &nbsp;·&nbsp; Division<br>
 SMITH, JOHN A, STG2, 1, SONAR<br>
 JONES, MARY B, STG1, 1, SONAR<br>
 BROWN, ERIC T, STGC, 2, TRNG</div>
@@ -117,8 +117,8 @@ BROWN, ERIC T, STGC, 2, TRNG</div>
     <div class="modal-grid">
       <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Last, First MI</label><input type="text" id="eName"></div>
       <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Rate</label><input type="text" id="eRate"></div>
-      <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Section</label><input type="text" id="eSec"></div>
-      <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Work center</label><input type="text" id="eWC"></div>
+      <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Team</label><select id="eSec" style="font-size:14px"><option value="">-- Team --</option><option>BLUE</option><option>RED</option><option>WHITE</option><option value="__new_team__">+ Add new...</option></select></div>
+      <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Division</label><select id="eWC" style="font-size:14px"><option value="">-- Division --</option><option>N85</option><option value="__new_div__">+ Add new...</option></select></div>
     </div>
     <div class="modal-actions">
       <button onclick="closeEdit()">Cancel</button>
