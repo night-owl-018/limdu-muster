@@ -8,14 +8,10 @@ const DEFAULT_STATUSES = [
   { v: 'APPT',       label: 'Appointment' },
   { v: 'SICK CALL',  label: 'Sick call' },
   { v: 'SIQ',        label: 'SIQ' },
-  { v: 'LIGHT DUTY', label: 'Light duty' },
   { v: 'LEAVE',      label: 'Leave' },
   { v: 'TAD',        label: 'TAD' },
-  { v: 'SCHOOL',     label: 'School' },
-  { v: 'WATCH',      label: 'Watch' },
   { v: 'POST-WATCH', label: 'Post-watch' },
   { v: 'LIBERTY',    label: 'Liberty' },
-  { v: 'LIMDU',      label: 'LIMDU' },
   { v: 'RPT N85',    label: 'Report to N85 Office' },
   { v: 'UA',         label: 'UA' },
 ];
@@ -88,7 +84,39 @@ function resolveSelect(id, type) {
   return el.value;
 }
 
-// ── State ─────────────────────────────────────────────────────────────────────
+function deleteStatus(v) {
+  if (!confirm(`Remove "${v}" status?`)) return;
+  const extra = JSON.parse(localStorage.getItem('extra_statuses') || '[]').filter(s => s !== v);
+  localStorage.setItem('extra_statuses', JSON.stringify(extra));
+  // clear it from any members who have it
+  members.forEach(m => { if (m.status === v) { m.status = ''; api('PUT', `/api/members/${m.id}`, { status: '' }); } });
+  render(); renderStats();
+  toast(`Status "${v}" removed`);
+}
+
+let submittedBy = localStorage.getItem('submittedBy') || '';
+
+function getSubmitters() {
+  const extra = JSON.parse(localStorage.getItem('extra_submitters') || '[]');
+  return [...new Set(['BLUE','RED','WHITE',...extra])];
+}
+function addSubmitter(v) {
+  const e = JSON.parse(localStorage.getItem('extra_submitters')||'[]');
+  if(!e.includes(v)){e.push(v);localStorage.setItem('extra_submitters',JSON.stringify(e));}
+}
+function handleSubmitterChange(v) {
+  if (v === '__new__') {
+    const c = prompt('Enter name or title:');
+    if (!c || !c.trim()) return;
+    const u = c.trim().toUpperCase();
+    addSubmitter(u);
+    submittedBy = u;
+  } else {
+    submittedBy = v;
+  }
+  localStorage.setItem('submittedBy', submittedBy);
+  generateReport();
+}
 let members      = [];
 let editingNote  = null;
 let editingId    = null;
@@ -118,6 +146,11 @@ async function handleStatusChange(id, value, el) {
     const upper = custom.trim().toUpperCase();
     addStatus(upper);
     await setStatus(id, upper);
+    return;
+  }
+  // Custom status with ✕ — ask if they want to delete it
+  if (!CORE_STATUS_VALS.includes(value) && value && value !== '__new_status__') {
+    await setStatus(id, value);
     return;
   }
   await setStatus(id, value);
@@ -408,7 +441,7 @@ function render() {
         <div class="card-actions">
           <select class="status-select sm" onchange="handleStatusChange(${m.id},this.value,this)">
             <option value="" ${!m.status?'selected':''}>-- status --</option>
-            ${getStatuses().map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}</option>`).join('')}
+            ${getStatuses().map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}${!CORE_STATUS_VALS.includes(s.v)?' ✕':''}</option>`).join('')}
             <option value="__new_status__">+ Add new...</option>
           </select>
           <button class="icon del sm" onclick="deleteMember(${m.id})" title="Remove"><i class="ti ti-trash"></i></button>
@@ -487,13 +520,11 @@ function generateReport() {
     `PRESENT:          ${cnt('PRESENT')}`,
     `PHONE / TEXT:     ${cnt('PHONE','TEXT')}`,
     `APPT / SICK CALL: ${cnt('APPT','SICK CALL')}`,
-    `SIQ / LIGHT DUTY: ${cnt('SIQ','LIGHT DUTY')}`,
+    `SIQ:              ${cnt('SIQ')}`,
     `LEAVE:            ${cnt('LEAVE')}`,
     `TAD:              ${cnt('TAD')}`,
-    `SCHOOL:           ${cnt('SCHOOL')}`,
-    `WATCH/POST-WATCH: ${cnt('WATCH','POST-WATCH')}`,
+    `POST-WATCH:       ${cnt('POST-WATCH')}`,
     `LIBERTY:          ${cnt('LIBERTY')}`,
-    `LIMDU:            ${cnt('LIMDU')}`,
     `RPT N85 OFFICE:   ${cnt('RPT N85')}`,
     `UA:               ${ua}`,
     ...statuses.filter(s => !CORE_STATUS_VALS.includes(s.v)).map(s => `${s.label.toUpperCase().padEnd(17)} ${cnt(s.v)}`),
@@ -508,6 +539,9 @@ function generateReport() {
     return `  ${m.name.padEnd(maxNameLen + 2)} ${label}${note}`;
   });
 
+  const submitterOpts = getSubmitters().map(s =>
+    `<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('');
+
   const report = [
     `MUSTER REPORT - ${dt} / ${hhmm}`,
     '',
@@ -517,13 +551,26 @@ function generateReport() {
     '',
     ...summaryLines,
     '',
-    'FULL ROSTER:',
+    'FULL ROSTER BY NAME:',
     ...rosterLines,
     '',
-    'SUBMITTED BY: ______________________',
+    `SUBMITTED BY: ${submittedBy || '______________________'}`,
   ].join('\n');
 
   document.getElementById('reportPre').textContent = report;
+
+  // Submitted by selector below the report
+  const subEl = document.getElementById('submittedByRow');
+  if (subEl) {
+    subEl.innerHTML = `
+      <span style="font-size:13px;font-weight:500;color:var(--text-2)">Submitted by:</span>
+      <select style="font-size:13px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)" onchange="handleSubmitterChange(this.value)">
+        <option value="">-- Select --</option>
+        ${submitterOpts}
+        <option value="__new__">+ Add new...</option>
+      </select>`;
+  }
+
   const warn = document.getElementById('reportWarn');
   if (pending > 0) { warn.innerHTML = `<i class="ti ti-alert-triangle"></i> ${pending} member(s) have no status entered.`; warn.style.display='flex'; }
   else warn.style.display = 'none';
@@ -541,7 +588,7 @@ function switchTab(name, el) {
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
   if (name === 'roster') renderRosterList();
-  if (name === 'report') generateReport();
+  if (name === 'report') { generateReport(); if(typeof renderCustomStatuses==='function') renderCustomStatuses(); }
 }
 
 function toggleAddPanel() {
