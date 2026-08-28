@@ -10,7 +10,6 @@ const DEFAULT_STATUSES = [
   { v: 'SIQ',        label: 'SIQ' },
   { v: 'LEAVE',      label: 'Leave' },
   { v: 'TAD',        label: 'TAD' },
-  { v: 'POST-WATCH', label: 'Post-watch' },
   { v: 'LIBERTY',    label: 'Liberty' },
   { v: 'RPT N85',    label: 'Report to N85 Office' },
   { v: 'UA',         label: 'UA' },
@@ -98,9 +97,8 @@ function renderManageStatusList() {
 
   // Built-in statuses — shown as non-deletable chips
   const builtInHtml = DEFAULT_STATUSES.map(s => `
-    <span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-1);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--text-2)">
+    <span style="display:inline-flex;align-items:center;background:var(--surface-1);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--text-2)">
       ${s.label}
-      <span style="font-size:10px;color:var(--text-3);margin-left:2px">built-in</span>
     </span>`).join('');
 
   // Custom statuses — deletable
@@ -640,7 +638,6 @@ function generateReport() {
     { key:'SIQ',       label:'SIQ',              val: cnt('SIQ') },
     { key:'LEAVE',     label:'Leave',            val: cnt('LEAVE') },
     { key:'TAD',       label:'TAD',              val: cnt('TAD') },
-    { key:'POSTWATCH', label:'Post-Watch',       val: cnt('POST-WATCH') },
     { key:'LIBERTY',   label:'Liberty',          val: cnt('LIBERTY') },
     { key:'RPTN85',    label:'Rpt N85 Office',   val: cnt('RPT N85') },
     { key:'UA',        label:'UA',               val: ua },
@@ -662,11 +659,17 @@ function generateReport() {
     return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label}${note}`;
   });
 
+  const acctStmt = localStorage.getItem('acct_statement') || 'none';
+  const stmtLine = acctStmt === 'all_present'      ? 'All present and accounted for.'
+                 : acctStmt === 'with_exceptions'  ? 'All present and accounted for with the exceptions below.'
+                 : '';
+
   const plainText = [
     `MUSTER REPORT`,
     `${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,
     '',
     ...plainLines,
+    ...(stmtLine ? ['', stmtLine] : []),
     '',
     'ROSTER:',
     ...rosterPlain,
@@ -726,10 +729,27 @@ function generateReport() {
         <div style="font-size:12px;color:var(--text-3);margin-top:2px">${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()} · ${hhmm}</div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;padding:12px;background:var(--surface-alt);border-radius:var(--radius)">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;padding:12px;background:var(--surface-alt);border-radius:var(--radius)">
         <div><div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Assigned</div><div style="font-size:22px;font-weight:700;color:var(--text)">${members.length}</div></div>
         <div><div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Accounted</div><div style="font-size:22px;font-weight:700;color:var(--success-text)">${acct}</div></div>
         <div><div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Pending</div><div style="font-size:22px;font-weight:700;color:${(ua+pending)>0?'var(--danger-text)':'var(--text)'}">${ua+pending}</div></div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Accountability statement</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${[
+            { key:'all_present', label:'All present and accounted for' },
+            { key:'with_exceptions', label:'All present and accounted for with the exceptions below' },
+            { key:'none', label:'No statement' },
+          ].map(opt => {
+            const sel = (localStorage.getItem('acct_statement')||'none') === opt.key;
+            return `<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid ${sel?'var(--accent)':'var(--border)'};border-radius:var(--radius);cursor:pointer;background:${sel?'var(--accent-bg)':'var(--surface-alt)'}">
+              <input type="radio" name="acct_stmt" value="${opt.key}" ${sel?'checked':''} onchange="localStorage.setItem('acct_statement',this.value);generateReport()" style="width:auto;padding:0;border:none;box-shadow:none">
+              <span style="font-size:13px;color:${sel?'var(--accent-text)':'var(--text-2)'};font-weight:${sel?'600':'400'}">${opt.label}</span>
+            </label>`;
+          }).join('')}
+        </div>
       </div>
 
       <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Status breakdown · click any row to hide from report</div>
@@ -799,7 +819,6 @@ function generateReport() {
     { key:'SIQ',       label:'SIQ',             val: cnt('SIQ') },
     { key:'LEAVE',     label:'Leave',           val: cnt('LEAVE') },
     { key:'TAD',       label:'TAD',             val: cnt('TAD') },
-    { key:'POSTWATCH', label:'Post-Watch',      val: cnt('POST-WATCH') },
     { key:'LIBERTY',   label:'Liberty',         val: cnt('LIBERTY') },
     { key:'RPTN85',    label:'RPT N85 Office',  val: cnt('RPT N85') },
     { key:'UA',        label:'UA',              val: ua, danger: ua > 0 },
