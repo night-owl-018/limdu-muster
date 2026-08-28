@@ -1,0 +1,13 @@
+version: "3.8"
+services:
+  division-muster:
+    build: .
+    container_name: limdu-muster
+    restart: unless-stopped
+    ports:
+      - "3456:3000"
+    volumes:
+      - /mnt/user/appdata/division-muster:/data
+    environment:
+      - DATA_FILE=/data/muster.json
+      - PORT=3000

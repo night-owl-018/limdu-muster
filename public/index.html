@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Division Muster — LIMDU Tracker</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <nav class="topnav">
+    <div class="topnav-logo"><i class="ti ti-anchor" aria-hidden="true"></i> Division Muster</div>
+    <div class="topnav-date" id="topDate"></div>
+  </nav>
+
+  <main class="main">
+    <!-- Stats -->
+    <div class="stats" id="stats"></div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('muster', this)">Muster</button>
+      <button class="tab" onclick="switchTab('roster', this)">Manage roster</button>
+      <button class="tab" onclick="switchTab('report', this)">Report</button>
+    </div>
+
+    <!-- MUSTER TAB -->
+    <div id="tab-muster">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <input class="sm" style="max-width:220px" type="text" id="search" placeholder="Search name or rate..." oninput="render()">
+          <select class="sm" id="filterSec" onchange="render()"><option value="">All sections</option></select>
+          <select class="sm" id="filterSt" onchange="render()"><option value="">All statuses</option></select>
+        </div>
+        <div class="toolbar-right">
+          <button class="sm primary" onclick="generateReport()"><i class="ti ti-clipboard-text" aria-hidden="true"></i> Generate report</button>
+        </div>
+      </div>
+      <div id="roster"></div>
+    </div>
+
+    <!-- ROSTER TAB -->
+    <div id="tab-roster" style="display:none">
+      <!-- Add single -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="font-size:15px;font-weight:600">Members <span id="rosterCount" style="font-size:13px;font-weight:400;color:var(--text-3)"></span></h2>
+        <button class="sm primary" onclick="toggleAddPanel()"><i class="ti ti-user-plus" aria-hidden="true"></i> Add member</button>
+      </div>
+
+      <div id="addPanel" style="display:none" class="add-panel">
+        <div class="add-panel-title"><i class="ti ti-user-plus" aria-hidden="true"></i> Add new member</div>
+        <div class="add-grid">
+          <div class="field"><label>Last, First MI</label><input type="text" id="nName" placeholder="SMITH, JOHN A"></div>
+          <div class="field"><label>Rate</label><input type="text" id="nRate" placeholder="STG2" style="max-width:90px"></div>
+          <div class="field"><label>Section</label><input type="text" id="nSec" placeholder="1" style="max-width:70px"></div>
+          <div class="field"><label>Work center</label><input type="text" id="nWC" placeholder="SONAR"></div>
+          <div class="field" style="display:flex;align-items:flex-end;gap:6px">
+            <button class="primary" onclick="addMember()"><i class="ti ti-check" aria-hidden="true"></i> Add</button>
+            <button onclick="toggleAddPanel()">Cancel</button>
+          </div>
+        </div>
+        <div id="addErr" style="display:none;color:var(--danger-text);font-size:13px;margin-top:8px"></div>
+      </div>
+
+      <!-- Import -->
+      <div class="import-panel">
+        <h3><i class="ti ti-table-import" aria-hidden="true"></i> Bulk import</h3>
+        <p>Paste your roster below — one person per line. Columns separated by commas or tabs.</p>
+        <div class="import-example">Last Name, First MI &nbsp;·&nbsp; Rate &nbsp;·&nbsp; Section &nbsp;·&nbsp; Work Center<br>
+SMITH, JOHN A, STG2, 1, SONAR<br>
+JONES, MARY B, STG1, 1, SONAR<br>
+BROWN, ERIC T, STGC, 2, TRNG</div>
+        <textarea id="importText" placeholder="Paste roster here..."></textarea>
+        <div class="import-actions">
+          <button class="primary" onclick="bulkImport()"><i class="ti ti-upload" aria-hidden="true"></i> Import</button>
+          <button onclick="document.getElementById('importText').value=''">Clear</button>
+          <span id="importResult" class="import-result"></span>
+        </div>
+      </div>
+
+      <!-- Roster list -->
+      <div id="rosterList"></div>
+
+      <!-- Danger zone -->
+      <div class="danger-zone">
+        <div class="danger-zone-text">
+          <h4>Clear entire roster</h4>
+          <p>Removes all members permanently. This cannot be undone.</p>
+        </div>
+        <button class="danger" onclick="clearAll()"><i class="ti ti-trash" aria-hidden="true"></i> Clear roster</button>
+      </div>
+    </div>
+
+    <!-- REPORT TAB -->
+    <div id="tab-report" style="display:none">
+      <div class="report-panel">
+        <div class="report-hdr">
+          <h3><i class="ti ti-file-text" aria-hidden="true"></i> Muster report</h3>
+          <button class="sm" onclick="copyReport()"><i class="ti ti-copy" aria-hidden="true"></i> Copy</button>
+          <button class="sm primary" onclick="generateReport();switchTab('report',document.querySelectorAll('.tab')[2])">Refresh</button>
+        </div>
+        <pre id="reportPre" class="report-pre">Hit "Generate report" or switch to this tab to build the report.</pre>
+        <div id="reportWarn" style="display:none" class="report-warn"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Edit modal -->
+<div id="editModal" style="display:none" class="modal-bg" onclick="if(event.target===this)closeEdit()">
+  <div class="modal">
+    <h3>Edit member</h3>
+    <div class="modal-grid">
+      <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Last, First MI</label><input type="text" id="eName"></div>
+      <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Rate</label><input type="text" id="eRate"></div>
+      <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Section</label><input type="text" id="eSec"></div>
+      <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Work center</label><input type="text" id="eWC"></div>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeEdit()">Cancel</button>
+      <button class="primary" onclick="saveEdit()"><i class="ti ti-check" aria-hidden="true"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
