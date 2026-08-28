@@ -134,6 +134,7 @@ button.icon.del:hover { color: var(--danger-text); background: var(--danger-bg);
 .pill-POST-WATCH,
 .pill-LIBERTY    { background: var(--neutral-bg); color: var(--neutral-text); }
 .pill-LIMDU      { background: #fff7ed;            color: #c2410c;             }
+.pill-RPT\ N85   { background: #f0f9ff;            color: #0369a1;             }
 .pill-UA         { background: var(--danger-bg);  color: var(--danger-text);  }
 .pill-none       { background: var(--neutral-bg); color: var(--text-3); border: 1px dashed var(--border-strong); }
 
