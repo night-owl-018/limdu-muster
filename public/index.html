@@ -35,7 +35,18 @@
         </div>
         <div class="toolbar-right">
           <button class="sm" onclick="toggleMusterAdd()"><i class="ti ti-user-plus" aria-hidden="true"></i> Add member</button>
+          <button class="sm" onclick="toggleManageStatuses()"><i class="ti ti-settings" aria-hidden="true"></i> Statuses</button>
           <button class="sm primary" onclick="generateReport()"><i class="ti ti-clipboard-text" aria-hidden="true"></i> Generate report</button>
+        </div>
+      </div>
+      <div id="manageStatusPanel" style="display:none" class="add-panel" style="margin-bottom:1rem">
+        <div class="add-panel-title"><i class="ti ti-settings" aria-hidden="true"></i> Manage statuses</div>
+        <div style="font-size:12px;color:var(--accent-text);margin-bottom:10px">Built-in statuses cannot be deleted. Custom ones you added can be removed below.</div>
+        <div id="manageStatusList" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="newStatusInput" placeholder="New status name..." style="max-width:200px;font-size:13px">
+          <button class="primary sm" onclick="addNewStatusFromPanel()"><i class="ti ti-plus"></i> Add</button>
+          <button class="sm" onclick="toggleManageStatuses()">Close</button>
         </div>
       </div>
       <div id="roster"></div>
