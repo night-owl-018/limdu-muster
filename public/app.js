@@ -330,7 +330,7 @@ function txCard(m){
     </div>
     <div class="card-actions">
       <button class="checkin-btn ${ok?'':'primary'}" onclick="markText(${m.id},${ok})">
-        ${ok?'<i class="ti ti-x"></i> Unmark':'<i class="ti ti-check"></i> Mark texted'}
+        ${ok?'<i class="ti ti-x"></i> Unmark':'<i class="ti ti-check"></i> Marked texted'}
       </button>
     </div>
   </div>`;
