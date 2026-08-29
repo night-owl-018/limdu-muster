@@ -5,7 +5,7 @@ const DEFAULT_STATUSES = [
   { v:'PRESENT',    label:'Present' },
   { v:'IN-PERSON',  label:'In-Person Muster' },
   { v:'PHONE',      label:'Phone muster' },
-  { v:'TEXT',       label:'Text muster' },
+  { v:'TEXT',       label:'Texted In' },
   { v:'APPT',       label:'Appointment' },
   { v:'SICK CALL',  label:'Sick call' },
   { v:'SIQ',        label:'SIQ' },
@@ -13,7 +13,7 @@ const DEFAULT_STATUSES = [
   { v:'TAD',        label:'TAD' },
   { v:'POST-WATCH', label:'Post-watch' },
   { v:'LIBERTY',    label:'Liberty' },
-  { v:'RPT N85',    label:'Rpt N85 Office' },
+  { v:'RPT N85',    label:'Rpt to N85 Office' },
   { v:'UA',         label:'UA' },
 ];
 const CORE_VALS = DEFAULT_STATUSES.map(s=>s.v);
@@ -30,14 +30,14 @@ function addCustomStatus(name) {
   const u = name.toUpperCase();
   const extra = JSON.parse(localStorage.getItem('extra_statuses')||'[]');
   if (!extra.includes(u)) { extra.push(u); localStorage.setItem('extra_statuses',JSON.stringify(extra)); }
-  renderStatusChips(); renderSelectOptions(); renderIP(); toast(`"${u}" added`);
+  renderStatusChips(); renderSelectOptions(); renderMuster(); toast(`"${u}" added`);
 }
 function deleteCustomStatus(v) {
   if (!confirm(`Remove "${v}"?`)) return;
   const extra = JSON.parse(localStorage.getItem('extra_statuses')||'[]').filter(s=>s!==v);
   localStorage.setItem('extra_statuses',JSON.stringify(extra));
   members.forEach(m=>{ if(m.status===v){ m.status=''; api('PUT',`/api/members/${m.id}`,{status:''}); }});
-  renderStatusChips(); renderSelectOptions(); renderIP(); toast(`"${v}" removed`);
+  renderStatusChips(); renderSelectOptions(); renderMuster(); toast(`"${v}" removed`);
 }
 function renderStatusChips() {
   const el = document.getElementById('statusChips'); if(!el)return;
@@ -105,11 +105,11 @@ async function load(){
   const data=await api('GET','/api/members');
   members=data.members||[];
   renderSelectOptions();
-  renderStats(); renderIP(); renderTX(); renderRosterList();
+  renderMuster(); renderRosterList();
 }
 
 // ── Stats ────────────────────────────────────────────────────────
-function renderStats(){ /* removed */ }
+
 
 // ── Pills ────────────────────────────────────────────────────────
 function pill(status){
@@ -125,7 +125,7 @@ function setSort(dir){
   if(dir==='desc') members.sort((a,b)=>b.name.localeCompare(a.name));
   document.getElementById('sortAscBtn')?.classList.toggle('primary',dir==='asc');
   document.getElementById('sortDescBtn')?.classList.toggle('primary',dir==='desc');
-  renderIP(); renderTX(); renderRosterList();
+  renderMuster(); renderRosterList();
 }
 function onDragStart(e,id){ dragSrcId=id; e.dataTransfer.effectAllowed='move'; e.currentTarget.style.opacity='.45'; }
 function onDragEnd(e){ e.currentTarget.style.opacity='1'; }
@@ -137,7 +137,7 @@ async function onDrop(e,tgtId){
   const [mv]=members.splice(si,1); members.splice(ti,0,mv);
   sortDir='manual';
   await api('POST','/api/members/reorder',{order:members.map(m=>m.id)});
-  renderIP(); renderTX(); renderRosterList();
+  renderMuster(); renderRosterList();
 }
 
 // ── Toggles ──────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ function toggleTeamDiv(){
   localStorage.setItem('showTeamDiv',showTeamDiv);
   const btn=document.getElementById('tdBtn');
   if(btn) btn.innerHTML=`<i class="ti ti-eye${showTeamDiv?'':'-off'}"></i>`;
-  renderIP(); renderRosterList();
+  renderMuster(); renderRosterList();
 }
 
 // ── Sub-tab helpers ──────────────────────────────────────────────
@@ -226,11 +226,10 @@ function groupByStatus(list, doneVals, doneLabel){
 }
 
 // ── IN-PERSON RENDER ─────────────────────────────────────────────
-function setIPView(v){ ipView=v; renderIP(); }
+function setMusterView(v){ musterView=v; renderMuster(); }
+let musterView='all';
 
-const IP_DONE = ['PRESENT','IN-PERSON'];
-
-function renderIP(){
+function renderMuster(){
   const q=(document.getElementById('ipSearch')?.value||'').toLowerCase();
   const ft=document.getElementById('ipTeam')?.value||'';
   renderSelectOptions();
@@ -241,41 +240,83 @@ function renderIP(){
     return true;
   });
 
-  document.getElementById('ipSubTabs').innerHTML = dynamicSubTabs(list, ipView, 'setIPView', IP_DONE, 'Checked In');
+  document.getElementById('ipSubTabs').innerHTML = musterSubTabs(list, musterView);
 
   const el=document.getElementById('ipRoster'); if(!el)return;
 
-  // Filtered views
-  if(ipView==='pending'){
+  // Filtered single-status view
+  if(musterView==='pending'){
     const p=list.filter(m=>!m.status);
-    el.innerHTML = p.length?`<div class="roster">${p.map(ipCard).join('')}</div>`
+    el.innerHTML = p.length?`<div class="roster">${p.map(musterCard).join('')}</div>`
       :`<div class="empty"><i class="ti ti-circle-check"></i><p>Everyone has a status.</p></div>`;
     return;
   }
-  if(ipView==='done'){
-    const d=list.filter(m=>IP_DONE.includes(m.status));
-    el.innerHTML = d.length?`<div class="roster">${d.map(ipCard).join('')}</div>`
-      :`<div class="empty"><i class="ti ti-users"></i><p>No one checked in yet.</p></div>`;
-    return;
-  }
-  if(ipView.startsWith('st:')){
-    const v=ipView.slice(3);
+  if(musterView.startsWith('st:')){
+    const v=musterView.slice(3);
     const f=list.filter(m=>m.status===v);
-    el.innerHTML = f.length?`<div class="roster">${f.map(ipCard).join('')}</div>`
+    el.innerHTML = f.length?`<div class="roster">${f.map(musterCard).join('')}</div>`
       :`<div class="empty"><i class="ti ti-users"></i><p>None in this status.</p></div>`;
     return;
   }
 
-  // All view — grouped sections, Checked In first
-  const groups = groupByStatus(list, IP_DONE, 'Checked In');
-  if(!groups.length){
-    el.innerHTML=`<div class="empty"><i class="ti ti-users"></i><p>No members found.</p></div>`;
-    return;
+  // All view — one section per status, pending last
+  const statuses=getStatuses();
+  const groups={};
+  list.forEach(m=>{ if(m.status) (groups[m.status]=groups[m.status]||[]).push(m); });
+  const pending=list.filter(m=>!m.status);
+
+  // Order: In-Person first, Texted second, then alphabetical, pending last
+  const order=['IN-PERSON','PRESENT','TEXT'];
+  const keys=Object.keys(groups).sort((a,b)=>{
+    const ai=order.indexOf(a), bi=order.indexOf(b);
+    if(ai>=0&&bi>=0) return ai-bi;
+    if(ai>=0) return -1;
+    if(bi>=0) return 1;
+    return a.localeCompare(b);
+  });
+
+  let html='';
+  keys.forEach((k,i)=>{
+    const st=statuses.find(x=>x.v===k);
+    const label=st?st.label:k;
+    const ok=['IN-PERSON','PRESENT','TEXT'].includes(k);
+    const ua=k==='UA';
+    const color=ua?'var(--danger)':ok?'var(--success)':'var(--text-2)';
+    const bg=ua?'var(--danger-bg)':ok?'var(--success-bg)':'var(--neutral-bg)';
+    html += secHdr(label,color,bg,groups[k].length,i>0)+`<div class="roster">${groups[k].map(musterCard).join('')}</div>`;
+  });
+  if(pending.length){
+    html += secHdr('Pending','var(--warn)','var(--warn-bg)',pending.length,keys.length>0)+
+      `<div class="roster">${pending.map(musterCard).join('')}</div>`;
   }
-  el.innerHTML = groups.map((g,i)=>
-    secHdr(g.label, g.color, g.bg, g.members.length, i>0) +
-    `<div class="roster">${g.members.map(ipCard).join('')}</div>`
-  ).join('');
+
+  el.innerHTML = html || `<div class="empty"><i class="ti ti-users"></i><p>No members found.</p></div>`;
+}
+
+function musterSubTabs(list, view){
+  const tabs=[{key:'all',label:'All',count:list.length}];
+  const pendingCount=list.filter(m=>!m.status).length;
+  if(pendingCount>0) tabs.push({key:'pending',label:'Pending',count:pendingCount,warn:true});
+
+  const seen={};
+  list.forEach(m=>{ if(m.status) seen[m.status]=(seen[m.status]||0)+1; });
+  const statuses=getStatuses();
+  const order=['IN-PERSON','PRESENT','TEXT'];
+  Object.keys(seen).sort((a,b)=>{
+    const ai=order.indexOf(a),bi=order.indexOf(b);
+    if(ai>=0&&bi>=0)return ai-bi;
+    if(ai>=0)return -1; if(bi>=0)return 1;
+    return a.localeCompare(b);
+  }).forEach(v=>{
+    const st=statuses.find(x=>x.v===v);
+    tabs.push({key:'st:'+v,label:st?st.label:v,count:seen[v],
+      ok:['IN-PERSON','PRESENT','TEXT'].includes(v), danger:v==='UA'});
+  });
+
+  return tabs.map(t=>
+    `<button class="sub-tab ${view===t.key?'active':''}" onclick="setMusterView('${t.key}')"
+      style="${t.warn?'color:var(--warn)':t.ok?'color:var(--success)':t.danger?'color:var(--danger)':''}">
+      ${t.label} <span class="badge">${t.count}</span></button>`).join('');
 }
 
 function secHdr(label,color,bg,count,mt=false){
@@ -285,11 +326,10 @@ function secHdr(label,color,bg,count,mt=false){
     <hr></div>`;
 }
 
-function ipCard(m){
-  const isIP = m.status==='PRESENT'||m.status==='IN-PERSON';
-  const noteEl = editingNote===m.id
-    ?`<div class="note-row"><input type="text" placeholder="Note..." value="${(m.note||'').replace(/"/g,'&quot;')}" onchange="saveNote(${m.id},this.value)" onblur="saveNote(${m.id},this.value)"><button class="sm" onclick="editingNote=null;renderIP()"><i class="ti ti-check"></i></button></div>`
-    : m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
+function musterCard(m){
+  const isIP = m.status==='IN-PERSON'||m.status==='PRESENT';
+  const isTX = m.status==='TEXT';
+  const noteEl = m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
   const metaRow = showTeamDiv ? `<div class="card-meta-row">
       <span class="field-lbl">TEAM</span>
       <select onchange="saveField(${m.id},'sec',this.value)" style="font-size:11px;padding:2px 5px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)">
@@ -300,112 +340,35 @@ function ipCard(m){
         <option value="">--</option>${getDivs().map(d=>`<option value="${d}" ${m.wc===d?'selected':''}>${d}</option>`).join('')}<option value="__new__">+</option>
       </select>
     </div>` : '';
-  return `<div class="card${isIP?'':' pending'}${m.status==='UA'?' ua-card':''}"
+  return `<div class="card${(isIP||isTX)?'':' pending'}${m.status==='UA'?' ua-card':''}"
       draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondrop="onDrop(event,${m.id})">
     <div style="cursor:grab;color:var(--text-3);padding:0 2px;display:flex;align-items:center;align-self:stretch"><i class="ti ti-grip-vertical" style="font-size:15px"></i></div>
     <div class="card-body">
       <div class="card-top">
         ${pill(m.status)}
         <span class="card-name">${m.name}</span>
-        <span class="card-meta">${m.rate||''}</span>
+        <span class="card-meta">${m.rate||''}${m.sec&&!showTeamDiv?' · '+m.sec:''}</span>
       </div>
       ${metaRow}
       ${noteEl}
     </div>
     <div class="card-actions">
-      <button class="big-btn ${isIP?'done':'go'}" onclick="quickSet(${m.id},'${isIP?'':'IN-PERSON'}')">
-        ${isIP?'<i class="ti ti-check"></i> Checked in':'<i class="ti ti-user-check"></i> Check in'}
+      <button class="act-btn ${isIP?'done':''}" onclick="quickSet(${m.id},'${isIP?'':'IN-PERSON'}')" title="In-Person">
+        <i class="ti ti-user-check"></i><span class="act-lbl">In-Person</span>
       </button>
-      <button class="more-btn" onclick="openSheet(${m.id})" title="More options">⋯</button>
+      <button class="act-btn ${isTX?'done-tx':''}" onclick="quickSet(${m.id},'${isTX?'':'TEXT'}')" title="Texted In">
+        <i class="ti ti-message"></i><span class="act-lbl">Texted</span>
+      </button>
+      <button class="more-btn" onclick="openSheet(${m.id})" title="More">⋯</button>
     </div>
   </div>`;
-}
-
-// ── TEXT MUSTER RENDER ───────────────────────────────────────────
-function setTXView(v){ txView=v; renderTX(); }
-
-const TX_DONE = ['TEXT'];
-
-function renderTX(){
-  const q=(document.getElementById('txSearch')?.value||'').toLowerCase();
-  const ft=document.getElementById('txTeam')?.value||'';
-
-  const ts=document.getElementById('txTeam');
-  if(ts){ const cur=ts.value; ts.innerHTML=`<option value="">All teams</option>${getTeams().map(t=>`<option value="${t}"${cur===t?' selected':''}>${t}</option>`).join('')}`; }
-
-  let list=members.filter(m=>{
-    if(q&&!m.name.toLowerCase().includes(q)&&!(m.rate||'').toLowerCase().includes(q))return false;
-    if(ft&&m.sec!==ft)return false;
-    return true;
-  });
-
-  document.getElementById('txSubTabs').innerHTML = dynamicSubTabs(list, txView, 'setTXView', TX_DONE, 'Texted In');
-
-  const el=document.getElementById('txRoster'); if(!el)return;
-
-  if(txView==='pending'){
-    const p=list.filter(m=>!m.status);
-    el.innerHTML = p.length?`<div class="roster">${p.map(txCard).join('')}</div>`
-      :`<div class="empty"><i class="ti ti-circle-check"></i><p>Everyone has a status.</p></div>`;
-    return;
-  }
-  if(txView==='done'){
-    const d=list.filter(m=>TX_DONE.includes(m.status));
-    el.innerHTML = d.length?`<div class="roster">${d.map(txCard).join('')}</div>`
-      :`<div class="empty"><i class="ti ti-message"></i><p>No one has texted in yet.</p></div>`;
-    return;
-  }
-  if(txView.startsWith('st:')){
-    const v=txView.slice(3);
-    const f=list.filter(m=>m.status===v);
-    el.innerHTML = f.length?`<div class="roster">${f.map(txCard).join('')}</div>`
-      :`<div class="empty"><i class="ti ti-users"></i><p>None in this status.</p></div>`;
-    return;
-  }
-
-  const groups = groupByStatus(list, TX_DONE, 'Texted In');
-  if(!groups.length){
-    el.innerHTML=`<div class="empty"><i class="ti ti-message"></i><p>No members.</p></div>`;
-    return;
-  }
-  el.innerHTML = groups.map((g,i)=>
-    secHdr(g.label, g.color, g.bg, g.members.length, i>0) +
-    `<div class="roster">${g.members.map(txCard).join('')}</div>`
-  ).join('');
-}
-
-function txCard(m){
-  const ok = m.status==='TEXT';
-  const noteEl = m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
-  return `<div class="card${ok?'':' pending'}">
-    <div class="card-body">
-      <div class="card-top">
-        ${pill(m.status)}
-        <span class="card-name">${m.name}</span>
-        <span class="card-meta">${m.rate||''}${m.sec?' · '+m.sec:''}</span>
-      </div>
-      ${noteEl}
-    </div>
-    <div class="card-actions">
-      <button class="big-btn ${ok?'done':'go'}" onclick="quickSet(${m.id},'${ok?'':'TEXT'}')">
-        ${ok?'<i class="ti ti-check"></i> Texted':'<i class="ti ti-message-check"></i> Mark texted'}
-      </button>
-      <button class="more-btn" onclick="openSheet(${m.id})">⋯</button>
-    </div>
-  </div>`;
-}
-
-async function markText(id, isTexted){
-  await api('PUT',`/api/members/${id}`,{status:isTexted?'':' TEXT'.trim()});
-  const m=members.find(x=>x.id===id); if(m) m.status=isTexted?'':'TEXT';
-  renderStats(); renderTX();
 }
 
 // ── One-tap set + status sheet ────────────────────────────────────
 async function quickSet(id, status){
   await api('PUT',`/api/members/${id}`,{status});
   const m=members.find(x=>x.id===id); if(m) m.status=status;
-  renderStats(); renderIP(); renderTX();
+  renderMuster();
 }
 
 let sheetMemberId = null;
@@ -433,7 +396,15 @@ function openSheet(id){
   document.getElementById('statusSheet').style.display='flex';
 }
 function closeSheet(){ sheetMemberId=null; document.getElementById('statusSheet').style.display='none'; }
-async function pickStatus(v){ const id=sheetMemberId; closeSheet(); await quickSet(id,v); }
+async function pickStatus(v){
+  const id=sheetMemberId; const m=members.find(x=>x.id===id); closeSheet();
+  if(!v){ await quickSet(id,''); await api('PUT',`/api/members/${id}`,{note:''}); if(m)m.note=''; renderMuster(); return; }
+  const st=getStatuses().find(x=>x.v===v);
+  const n=prompt(`Note for "${st?st.label:v}" (optional — leave blank for none):`, m?.note||'');
+  await api('PUT',`/api/members/${id}`,{status:v, note:(n===null?'':n)});
+  if(m){ m.status=v; m.note=(n===null?'':n); }
+  renderMuster();
+}
 function addStatusFromSheet(){
   const c=prompt('New status name:'); if(!c||!c.trim())return;
   const u=c.trim().toUpperCase(); addCustomStatus(u);
@@ -443,7 +414,7 @@ function noteFromSheet(){
   const id=sheetMemberId; const m=members.find(x=>x.id===id); if(!m)return;
   const n=prompt('Note:', m.note||''); closeSheet();
   if(n===null)return;
-  saveNote(id,n).then(()=>{ renderIP(); renderTX(); });
+  saveNote(id,n).then(()=>{ renderMuster(); });
 }
 function deleteFromSheet(){ const id=sheetMemberId; closeSheet(); deleteMember(id); }
 
@@ -456,13 +427,13 @@ async function handleStatusChange(id, val, el, tab){
   }
   await api('PUT',`/api/members/${id}`,{status:val});
   const m=members.find(x=>x.id===id); if(m) m.status=val;
-  renderStats(); if(tab==='ip') renderIP(); else renderTX();
+  renderMuster();
 }
 
 async function setStatus(id,v){
   await api('PUT',`/api/members/${id}`,{status:v});
   const m=members.find(x=>x.id===id); if(m) m.status=v;
-  renderStats(); renderIP(); renderTX();
+  renderMuster();
 }
 
 async function saveNote(id,v){
@@ -480,7 +451,7 @@ async function saveField(id,field,value){
   }
   await api('PUT',`/api/members/${id}`,{[field]:value});
   const m=members.find(x=>x.id===id); if(m) m[field]=value;
-  renderIP(); renderRosterList();
+  renderMuster(); renderRosterList();
 }
 
 async function addFromIP(){
@@ -494,7 +465,7 @@ async function addFromIP(){
   });
   members.push(m); toggleIPAdd();
   ['mName','mRate'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  renderStats(); renderIP(); renderRosterList(); toast('Member added');
+  renderMuster(); renderRosterList(); toast('Member added');
 }
 
 async function addMember(){
@@ -510,20 +481,20 @@ async function addMember(){
   });
   members.push(m); toggleRosterAdd();
   ['nName','nRate'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  renderStats(); renderIP(); renderRosterList(); toast('Member added');
+  renderMuster(); renderRosterList(); toast('Member added');
 }
 
 async function deleteMember(id){
   if(!confirm('Remove this member?'))return;
   await api('DELETE',`/api/members/${id}`);
   members=members.filter(m=>m.id!==id);
-  renderStats(); renderIP(); renderTX(); renderRosterList(); toast('Removed');
+  renderMuster(); renderRosterList(); toast('Removed');
 }
 
 async function clearAll(){
   if(!confirm('Remove ALL members permanently?'))return;
   await api('DELETE','/api/members'); members=[];
-  renderStats(); renderIP(); renderTX(); renderRosterList(); toast('Roster cleared');
+  renderMuster(); renderRosterList(); toast('Roster cleared');
 }
 
 async function bulkImport(){
@@ -539,7 +510,7 @@ async function bulkImport(){
   members.push(...(data.members||[]));
   if(document.getElementById('importText')) document.getElementById('importText').value='';
   if(res){res.className='import-result ok';res.textContent=`Imported ${data.added}.`;}
-  renderStats(); renderIP(); renderTX(); renderRosterList(); toast(`Imported ${data.added} members`);
+  renderMuster(); renderRosterList(); toast(`Imported ${data.added} members`);
 }
 
 // ── Edit modal ──────────────────────────────────────────────────
@@ -577,7 +548,7 @@ async function saveEdit(){
   await api('PUT',`/api/members/${editingId}`,{name,rate,sec,wc});
   const m=members.find(x=>x.id===editingId);
   if(m){m.name=name.toUpperCase();m.rate=rate.toUpperCase();m.sec=sec;m.wc=wc.toUpperCase();}
-  closeEdit(); renderIP(); renderRosterList(); toast('Updated');
+  closeEdit(); renderMuster(); renderRosterList(); toast('Updated');
 }
 
 // ── Roster list ──────────────────────────────────────────────────
@@ -753,14 +724,14 @@ function copyReport(){ navigator.clipboard.writeText(reportPlain).then(()=>toast
 
 // ── Tab switching ────────────────────────────────────────────────
 function switchMain(name, el){
-  ['inperson','text','roster','report'].forEach(t=>{
+  ['muster','roster','report'].forEach(t=>{
     const te=document.getElementById('tab-'+t); if(te) te.style.display=t===name?'block':'none';
   });
   document.querySelectorAll('.main-tab').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
   if(name==='roster') renderRosterList();
   if(name==='report') buildReport();
-  if(name==='text') renderTX();
+  if(name==='muster') renderMuster();
 }
 
 // ── Utility ──────────────────────────────────────────────────────

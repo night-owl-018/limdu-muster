@@ -240,3 +240,21 @@ button.danger { background: var(--danger-bg); color: var(--danger); border-color
 .sheet-opt i { font-size:17px; }
 .sheet-cancel { width:100%; padding:12px; border-radius:12px; font-size:14px; font-weight:600; background:var(--surface-alt); border:1px solid var(--border); }
 @media(min-width:600px){ .sheet-bg{align-items:center} .sheet{border-radius:18px; max-width:400px;} }
+
+/* ── Muster card action buttons ── */
+.act-btn { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600;
+  padding:7px 11px; border-radius:9px; border:1px solid var(--border-strong);
+  background:var(--surface); color:var(--text-2); white-space:nowrap; }
+.act-btn i { font-size:14px; }
+.act-btn:active { opacity:.7; }
+.act-btn.done    { background:var(--success-bg); color:var(--success); border-color:color-mix(in srgb,var(--success) 45%,transparent); }
+.act-btn.done-tx { background:#e0f2fe; color:#0369a1; border-color:#7dd3fc; }
+@media (prefers-color-scheme: dark){ .act-btn.done-tx { background:#0c2a3d; color:#7dd3fc; border-color:#0369a1; } }
+
+@media(max-width:600px){
+  .act-lbl { display:none; }
+  .act-btn { padding:8px 10px; }
+  .act-btn i { font-size:16px; }
+  .more-btn { width:34px; height:34px; }
+  .card-actions { gap:5px; }
+}

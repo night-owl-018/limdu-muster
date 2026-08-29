@@ -16,14 +16,13 @@
 <main class="main">
   <!-- Main tabs -->
   <div class="main-tabs">
-    <button class="main-tab active" data-tab="inperson" onclick="switchMain('inperson',this)"><i class="ti ti-users"></i> In-Person</button>
-    <button class="main-tab" data-tab="text" onclick="switchMain('text',this)"><i class="ti ti-message"></i> Text Muster</button>
+    <button class="main-tab active" data-tab="muster" onclick="switchMain('muster',this)"><i class="ti ti-users"></i> Muster</button>
     <button class="main-tab" data-tab="roster" onclick="switchMain('roster',this)"><i class="ti ti-list"></i> Roster</button>
     <button class="main-tab" data-tab="report" onclick="switchMain('report',this)"><i class="ti ti-clipboard-text"></i> Report</button>
   </div>
 
   <!-- IN-PERSON TAB -->
-  <div id="tab-inperson">
+  <div id="tab-muster">
     <div class="toolbar">
       <input type="text" id="ipSearch" placeholder="Search..." oninput="renderIP()">
       <select id="ipTeam" onchange="renderIP()"><option value="">All teams</option></select>
@@ -61,19 +60,6 @@
       <button class="sm" id="sortDescBtn" onclick="setSort('desc')"><i class="ti ti-sort-descending"></i> Z–A</button>
     </div>
     <div id="ipRoster"></div>
-  </div>
-
-  <!-- TEXT MUSTER TAB -->
-  <div id="tab-text" style="display:none">
-    <div class="toolbar">
-      <input type="text" id="txSearch" placeholder="Search..." oninput="renderTX()">
-      <select id="txTeam" onchange="renderTX()"><option value="">All teams</option></select>
-      <button class="sm" onclick="toggleIPAdd()"><i class="ti ti-user-plus"></i> Add</button>
-      <button class="sm" onclick="toggleStatuses()"><i class="ti ti-settings"></i></button>
-      <button class="sm" id="tdBtn2" onclick="toggleTeamDiv()"><i class="ti ti-eye-off"></i></button>
-    </div>
-    <div id="txSubTabs" class="sub-tabs"></div>
-    <div id="txRoster"></div>
   </div>
 
   <!-- ROSTER MANAGEMENT TAB -->
