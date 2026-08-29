@@ -105,7 +105,7 @@ async function load(){
   const data=await api('GET','/api/members');
   members=data.members||[];
   renderSelectOptions();
-  renderStats(); renderIP(); renderTX(); renderRosterList();
+  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList();
 }
 
 // ── Stats ────────────────────────────────────────────────────────
@@ -237,13 +237,15 @@ function renderIP(){
     return true;
   });
 
-  const done=list.filter(m=>m.status&&m.status!=='UA'&&!TEXT_VALS.includes(m.status));
-  const pending=list.filter(m=>!m.status||m.status==='UA'||TEXT_VALS.includes(m.status));
+  // In-Person: checked in = PRESENT or IN-PERSON only. Everything else pending.
+  const IP_DONE=['PRESENT','IN-PERSON'];
+  const done=list.filter(m=>IP_DONE.includes(m.status));
+  const pending=list.filter(m=>!IP_DONE.includes(m.status));
   const show=ipView==='pending'?pending:ipView==='done'?done:list;
 
   document.getElementById('ipSubTabs').innerHTML=subTabsHtml(ipView,
-    members.filter(m=>!m.status||m.status==='UA'||TEXT_VALS.includes(m.status)).length,
-    members.filter(m=>m.status&&m.status!=='UA'&&!TEXT_VALS.includes(m.status)).length,
+    members.filter(m=>!IP_DONE.includes(m.status)).length,
+    members.filter(m=>IP_DONE.includes(m.status)).length,
     'setIPView','ip');
 
   const el=document.getElementById('ipRoster');
@@ -270,40 +272,37 @@ function secHdr(label,color,bg,count,mt=false){
 }
 
 function ipCard(m){
-  const isDone=m.status&&m.status!=='UA'&&!TEXT_VALS.includes(m.status);
-  const noteEl=editingNote===m.id
+  const isIP = m.status==='PRESENT'||m.status==='IN-PERSON';
+  const noteEl = editingNote===m.id
     ?`<div class="note-row"><input type="text" placeholder="Note..." value="${(m.note||'').replace(/"/g,'&quot;')}" onchange="saveNote(${m.id},this.value)" onblur="saveNote(${m.id},this.value)"><button class="sm" onclick="editingNote=null;renderIP()"><i class="ti ti-check"></i></button></div>`
-    :m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note} <button class="icon sm" onclick="editingNote=${m.id};renderIP()"><i class="ti ti-pencil" style="font-size:11px"></i></button></div>`:'';
-  const metaRow=`<div class="card-meta-row${showTeamDiv?'':' hidden'}">
-    <span class="field-lbl">TEAM</span>
-    <select onchange="saveField(${m.id},'sec',this.value)" style="font-size:11px;padding:2px 5px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)">
-      <option value="">--</option>${getTeams().map(t=>`<option value="${t}" ${m.sec===t?'selected':''}>${t}</option>`).join('')}<option value="__new__">+</option>
-    </select>
-    <span class="field-lbl" style="margin-left:5px">DIV</span>
-    <select onchange="saveField(${m.id},'wc',this.value)" style="font-size:11px;padding:2px 5px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)">
-      <option value="">--</option>${getDivs().map(d=>`<option value="${d}" ${m.wc===d?'selected':''}>${d}</option>`).join('')}<option value="__new__">+</option>
-    </select>
-  </div>`;
-  return `<div class="card${!isDone?' pending':''}${m.status==='UA'?' ua-card':''}"
+    : m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
+  const metaRow = showTeamDiv ? `<div class="card-meta-row">
+      <span class="field-lbl">TEAM</span>
+      <select onchange="saveField(${m.id},'sec',this.value)" style="font-size:11px;padding:2px 5px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)">
+        <option value="">--</option>${getTeams().map(t=>`<option value="${t}" ${m.sec===t?'selected':''}>${t}</option>`).join('')}<option value="__new__">+</option>
+      </select>
+      <span class="field-lbl" style="margin-left:5px">DIV</span>
+      <select onchange="saveField(${m.id},'wc',this.value)" style="font-size:11px;padding:2px 5px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)">
+        <option value="">--</option>${getDivs().map(d=>`<option value="${d}" ${m.wc===d?'selected':''}>${d}</option>`).join('')}<option value="__new__">+</option>
+      </select>
+    </div>` : '';
+  return `<div class="card${isIP?'':' pending'}${m.status==='UA'?' ua-card':''}"
       draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondrop="onDrop(event,${m.id})">
-    <div style="cursor:grab;color:var(--text-3);padding:0 3px;display:flex;align-items:center;align-self:stretch"><i class="ti ti-grip-vertical" style="font-size:15px"></i></div>
+    <div style="cursor:grab;color:var(--text-3);padding:0 2px;display:flex;align-items:center;align-self:stretch"><i class="ti ti-grip-vertical" style="font-size:15px"></i></div>
     <div class="card-body">
       <div class="card-top">
         ${pill(m.status)}
         <span class="card-name">${m.name}</span>
         <span class="card-meta">${m.rate||''}</span>
-        <button class="icon sm" onclick="editingNote=${editingNote===m.id?null:m.id};renderIP()" style="margin-left:auto"><i class="ti ti-pencil" style="font-size:13px"></i></button>
       </div>
       ${metaRow}
       ${noteEl}
     </div>
     <div class="card-actions">
-      <select class="status-sel" onchange="handleStatusChange(${m.id},this.value,this,'ip')">
-        <option value="">-- status --</option>
-        ${getStatuses().map(s=>`<option value="${s.v}" ${m.status===s.v?'selected':''}>${s.label}</option>`).join('')}
-        <option value="__new_status__">+ Add new...</option>
-      </select>
-      <button class="icon del sm" onclick="deleteMember(${m.id})"><i class="ti ti-trash" style="font-size:13px"></i></button>
+      <button class="big-btn ${isIP?'done':'go'}" onclick="quickSet(${m.id},'${isIP?'':'IN-PERSON'}')">
+        ${isIP?'<i class="ti ti-check"></i> Checked in':'<i class="ti ti-user-check"></i> Check in'}
+      </button>
+      <button class="more-btn" onclick="openSheet(${m.id})" title="More options">⋯</button>
     </div>
   </div>`;
 }
@@ -352,21 +351,22 @@ function renderTX(){
 }
 
 function txCard(m){
-  const ok=m.status==='TEXT';
-  const noteEl=m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
+  const ok = m.status==='TEXT';
+  const noteEl = m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
   return `<div class="card${ok?'':' pending'}">
     <div class="card-body">
       <div class="card-top">
-        ${ok?'<span class="pill pill-TEXT">Text muster</span>':'<span class="pill pill-none">Pending</span>'}
+        ${pill(m.status)}
         <span class="card-name">${m.name}</span>
         <span class="card-meta">${m.rate||''}${m.sec?' · '+m.sec:''}</span>
       </div>
       ${noteEl}
     </div>
     <div class="card-actions">
-      <button class="checkin-btn ${ok?'':'primary'}" onclick="markText(${m.id},${ok})">
-        ${ok?'<i class="ti ti-x"></i> Unmark':'<i class="ti ti-check"></i> Mark texted'}
+      <button class="big-btn ${ok?'done':'go'}" onclick="quickSet(${m.id},'${ok?'':'TEXT'}')">
+        ${ok?'<i class="ti ti-check"></i> Texted':'<i class="ti ti-message-check"></i> Mark texted'}
       </button>
+      <button class="more-btn" onclick="openSheet(${m.id})">⋯</button>
     </div>
   </div>`;
 }
@@ -375,6 +375,104 @@ async function markText(id, isTexted){
   await api('PUT',`/api/members/${id}`,{status:isTexted?'':' TEXT'.trim()});
   const m=members.find(x=>x.id===id); if(m) m.status=isTexted?'':'TEXT';
   renderStats(); renderTX();
+}
+
+// ── One-tap set + status sheet ────────────────────────────────────
+async function quickSet(id, status){
+  await api('PUT',`/api/members/${id}`,{status});
+  const m=members.find(x=>x.id===id); if(m) m.status=status;
+  renderStats(); renderIP(); renderTX(); renderEX();
+}
+
+let sheetMemberId = null;
+const SHEET_ICONS = {
+  'PRESENT':'ti-user-check','IN-PERSON':'ti-user-check','PHONE':'ti-phone','TEXT':'ti-message',
+  'APPT':'ti-calendar','SICK CALL':'ti-stethoscope','SIQ':'ti-bed','LEAVE':'ti-plane',
+  'TAD':'ti-briefcase','POST-WATCH':'ti-moon','LIBERTY':'ti-beach','RPT N85':'ti-building',
+  'UA':'ti-alert-triangle',
+};
+
+function openSheet(id){
+  sheetMemberId = id;
+  const m = members.find(x=>x.id===id); if(!m) return;
+  document.getElementById('sheetTitle').textContent = m.name;
+  const opts = getStatuses().map(st=>`
+    <button class="sheet-opt ${m.status===st.v?'sel':''}" onclick="pickStatus('${st.v}')">
+      <i class="ti ${SHEET_ICONS[st.v]||'ti-circle'}"></i> ${st.label}
+    </button>`).join('');
+  document.getElementById('sheetOpts').innerHTML = `
+    <button class="sheet-opt ${!m.status?'sel':''}" onclick="pickStatus('')"><i class="ti ti-circle-dashed"></i> Clear status</button>
+    ${opts}
+    <button class="sheet-opt" onclick="addStatusFromSheet()" style="border-style:dashed;color:var(--accent-text)"><i class="ti ti-plus"></i> Add new status...</button>
+    <button class="sheet-opt" onclick="noteFromSheet()"><i class="ti ti-notes"></i> ${m.note?'Edit note':'Add note'}</button>
+    <button class="sheet-opt" onclick="deleteFromSheet()" style="color:var(--danger)"><i class="ti ti-trash"></i> Remove member</button>`;
+  document.getElementById('statusSheet').style.display='flex';
+}
+function closeSheet(){ sheetMemberId=null; document.getElementById('statusSheet').style.display='none'; }
+async function pickStatus(v){ const id=sheetMemberId; closeSheet(); await quickSet(id,v); }
+function addStatusFromSheet(){
+  const c=prompt('New status name:'); if(!c||!c.trim())return;
+  const u=c.trim().toUpperCase(); addCustomStatus(u);
+  pickStatus(u);
+}
+function noteFromSheet(){
+  const id=sheetMemberId; const m=members.find(x=>x.id===id); if(!m)return;
+  const n=prompt('Note:', m.note||''); closeSheet();
+  if(n===null)return;
+  saveNote(id,n).then(()=>{ renderIP(); renderTX(); renderEX(); });
+}
+function deleteFromSheet(){ const id=sheetMemberId; closeSheet(); deleteMember(id); }
+
+// ── EXCEPTIONS TAB ────────────────────────────────────────────────
+const PRIMARY_VALS = ['PRESENT','IN-PERSON','TEXT'];
+
+function renderEX(){
+  const el=document.getElementById('exRoster'); if(!el)return;
+  const q=(document.getElementById('exSearch')?.value||'').toLowerCase();
+  const ft=document.getElementById('exTeam')?.value||'';
+
+  const ts=document.getElementById('exTeam');
+  if(ts){ const cur=ts.value; ts.innerHTML=`<option value="">All teams</option>${getTeams().map(t=>`<option value="${t}"${cur===t?' selected':''}>${t}</option>`).join('')}`; }
+
+  const list=members.filter(m=>{
+    if(!m.status||PRIMARY_VALS.includes(m.status))return false;
+    if(q&&!m.name.toLowerCase().includes(q))return false;
+    if(ft&&m.sec!==ft)return false;
+    return true;
+  });
+
+  if(!list.length){
+    el.innerHTML=`<div class="empty"><i class="ti ti-circle-check"></i><p>No exceptions. Everyone is on text or in-person muster.</p></div>`;
+    return;
+  }
+
+  // group by status
+  const byStatus={};
+  list.forEach(m=>{ (byStatus[m.status]=byStatus[m.status]||[]).push(m); });
+  const statuses=getStatuses();
+  const keys=Object.keys(byStatus).sort();
+
+  el.innerHTML = keys.map(k=>{
+    const st=statuses.find(s=>s.v===k);
+    const label=st?st.label:k;
+    const color=k==='UA'?'var(--danger)':'var(--text-2)';
+    const bg=k==='UA'?'var(--danger-bg)':'var(--neutral-bg)';
+    return secHdr(label,color,bg,byStatus[k].length)+
+      `<div class="roster">${byStatus[k].map(m=>`
+        <div class="card${k==='UA'?' ua-card':''}">
+          <div class="card-body">
+            <div class="card-top">
+              ${pill(m.status)}
+              <span class="card-name">${m.name}</span>
+              <span class="card-meta">${m.rate||''}${m.sec?' · '+m.sec:''}</span>
+            </div>
+            ${m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:''}
+          </div>
+          <div class="card-actions">
+            <button class="more-btn" onclick="openSheet(${m.id})">⋯</button>
+          </div>
+        </div>`).join('')}</div>`;
+  }).join('');
 }
 
 // ── Actions ──────────────────────────────────────────────────────
@@ -447,13 +545,13 @@ async function deleteMember(id){
   if(!confirm('Remove this member?'))return;
   await api('DELETE',`/api/members/${id}`);
   members=members.filter(m=>m.id!==id);
-  renderStats(); renderIP(); renderTX(); renderRosterList(); toast('Removed');
+  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList(); toast('Removed');
 }
 
 async function clearAll(){
   if(!confirm('Remove ALL members permanently?'))return;
   await api('DELETE','/api/members'); members=[];
-  renderStats(); renderIP(); renderTX(); renderRosterList(); toast('Roster cleared');
+  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList(); toast('Roster cleared');
 }
 
 async function bulkImport(){
@@ -469,7 +567,7 @@ async function bulkImport(){
   members.push(...(data.members||[]));
   if(document.getElementById('importText')) document.getElementById('importText').value='';
   if(res){res.className='import-result ok';res.textContent=`Imported ${data.added}.`;}
-  renderStats(); renderIP(); renderTX(); renderRosterList(); toast(`Imported ${data.added} members`);
+  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList(); toast(`Imported ${data.added} members`);
 }
 
 // ── Edit modal ──────────────────────────────────────────────────
@@ -683,7 +781,7 @@ function copyReport(){ navigator.clipboard.writeText(reportPlain).then(()=>toast
 
 // ── Tab switching ────────────────────────────────────────────────
 function switchMain(name, el){
-  ['inperson','text','roster','report'].forEach(t=>{
+  ['inperson','text','exceptions','roster','report'].forEach(t=>{
     const te=document.getElementById('tab-'+t); if(te) te.style.display=t===name?'block':'none';
   });
   document.querySelectorAll('.main-tab').forEach(b=>b.classList.remove('active'));
@@ -691,6 +789,7 @@ function switchMain(name, el){
   if(name==='roster') renderRosterList();
   if(name==='report') buildReport();
   if(name==='text') renderTX();
+  if(name==='exceptions') renderEX();
 }
 
 // ── Utility ──────────────────────────────────────────────────────
