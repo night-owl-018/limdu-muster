@@ -110,33 +110,15 @@ async function load(){
 
 // ── Stats ────────────────────────────────────────────────────────
 function renderStats(){
-  const statuses = getStatuses();
   const total=members.length;
-
-  // Build dynamic stat items — always show Assigned, hide others if zero
-  const items = [
-    { label:'Personnel Assigned', val:total, always:true },
-  ];
-
-  // Gather counts per status
-  statuses.forEach(s => {
-    const count = members.filter(m=>m.status===s.v).length;
-    if(count > 0) {
-      const color = s.v==='UA' ? 'red' : (s.v==='PRESENT'||s.v==='IN-PERSON'||s.v==='TEXT') ? 'green' : '';
-      items.push({ label:s.label, val:count, color });
-    }
-  });
-
-  // Also add pending (no status)
-  const noStatus = members.filter(m=>!m.status).length;
-  if(noStatus > 0) items.push({ label:'Pending', val:noStatus, color:'amber' });
-
-  document.getElementById('stats').innerHTML = items.map(it =>
-    `<div class="stat">
-      <div class="stat-n ${it.color||''}">${it.val}</div>
-      <div class="stat-l">${it.label}</div>
-    </div>`
-  ).join('');
+  const ip=members.filter(m=>INPERSON_VALS.includes(m.status)).length;
+  const tx=members.filter(m=>TEXT_VALS.includes(m.status)).length;
+  const ua=members.filter(m=>m.status==='UA').length;
+  document.getElementById('stats').innerHTML=`
+    <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Assigned</div></div>
+    <div class="stat"><div class="stat-n ${ip>0?'green':''}">${ip}</div><div class="stat-l">In-Person</div></div>
+    <div class="stat"><div class="stat-n ${tx>0?'green':''}">${tx}</div><div class="stat-l">Texted</div></div>
+    <div class="stat"><div class="stat-n ${ua>0?'red':''}">${ua}</div><div class="stat-l">UA</div></div>`;
 }
 
 // ── Pills ────────────────────────────────────────────────────────
@@ -567,8 +549,7 @@ function buildReport(){
     :'';
 
   // Plain text
-  const plainSummary=ipDefs.filter(d=>!d.key.startsWith('_')&&!hidden.includes(d.key)&&d.val>0)
-    .map(d=>`${d.label.padEnd(22)} ${String(d.val).padStart(3)}`);
+  const plainSummary=[];  // summary breakdown removed
   const maxR=Math.max(...members.map(m=>(m.rate||'').length),4);
   const maxN=Math.max(...members.map(m=>m.name.length),20);
   const rosterPlainLines=members.map(m=>{
@@ -579,8 +560,7 @@ function buildReport(){
   });
   reportPlain=[
     `MUSTER REPORT`,`${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,'',
-    ...plainSummary,
-    ...(stmtLine?['',stmtLine]:[]),
+    ...(stmtLine?[stmtLine,'']:[]),
     '','FULL ROSTER:',...rosterPlainLines,'',
     `SUBMITTED BY: ${submittedBy||'______________________'}`,
   ].join('\n');
@@ -659,11 +639,6 @@ function buildReport(){
         <div style="font-size:10px;color:${ua+pending>0?'var(--danger)':'var(--text-3)'};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.8">Pending</div>
         <div style="font-size:22px;font-weight:700;color:${ua+pending>0?'var(--danger)':'var(--text)'}">${ua+pending}</div>
       </div>
-    </div>
-
-    <div class="rpt-hint">Tap any row to hide from the copied report</div>
-    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px;padding:2px 0">
-      ${summaryHtml}
     </div>
 
     <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Accountability statement</div>
