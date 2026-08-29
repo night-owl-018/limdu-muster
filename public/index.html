@@ -20,12 +20,13 @@
 
     <!-- Tabs -->
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('muster', this)">Muster</button>
+      <button class="tab active" onclick="switchTab('muster', this)">In-Person</button>
+      <button class="tab" onclick="switchTab('text', this)">Text Muster</button>
       <button class="tab" onclick="switchTab('roster', this)">Manage roster</button>
       <button class="tab" onclick="switchTab('report', this)">Report</button>
     </div>
 
-    <!-- MUSTER TAB -->
+    <!-- IN-PERSON MUSTER TAB -->
     <div id="tab-muster">
       <div class="toolbar">
         <div class="toolbar-left">
@@ -51,6 +52,17 @@
         </div>
       </div>
       <div id="roster"></div>
+    </div>
+
+    <!-- TEXT MUSTER TAB -->
+    <div id="tab-text" style="display:none">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <input class="sm" style="max-width:220px" type="text" id="searchText" placeholder="Search name or rate..." oninput="renderText()">
+          <select class="sm" id="filterSecText" onchange="renderText()"><option value="">All teams</option></select>
+        </div>
+      </div>
+      <div id="rosterText"></div>
     </div>
 
     <!-- ROSTER TAB -->
@@ -111,7 +123,7 @@ BROWN, ERIC T, STGC, 2, TRNG</div>
         <div class="report-hdr">
           <h3><i class="ti ti-file-text" aria-hidden="true"></i> Muster report</h3>
           <button class="sm" onclick="copyReport()"><i class="ti ti-copy" aria-hidden="true"></i> Copy</button>
-          <button class="sm primary" onclick="generateReport();switchTab('report',document.querySelectorAll('.tab')[2])">Refresh</button>
+          <button class="sm primary" onclick="generateReport();switchTab('report',document.querySelectorAll('.tab')[3])">Refresh</button>
         </div>
         <pre id="reportPre" class="report-pre">Hit "Generate report" or switch to this tab to build the report.</pre>
         <div id="reportWarn" style="display:none" class="report-warn"></div>
