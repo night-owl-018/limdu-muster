@@ -65,8 +65,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .main { padding: .875rem 1rem 2rem; max-width: 900px; margin: 0 auto; }
 
 /* ── Stats bar ── */
-.stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-bottom: 1rem; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 10px 8px; }
+.stats { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px 8px; min-width: 80px; flex: 1; }
 .stat-n { font-size: 22px; font-weight: 700; line-height: 1; margin-bottom: 3px; }
 .stat-l { font-size: 10px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .green { color: var(--success); } .amber { color: var(--warn); } .red { color: var(--danger); }
