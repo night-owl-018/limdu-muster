@@ -110,15 +110,33 @@ async function load(){
 
 // ── Stats ────────────────────────────────────────────────────────
 function renderStats(){
+  const statuses = getStatuses();
   const total=members.length;
-  const ip=members.filter(m=>INPERSON_VALS.includes(m.status)).length;
-  const tx=members.filter(m=>TEXT_VALS.includes(m.status)).length;
-  const ua=members.filter(m=>m.status==='UA').length;
-  document.getElementById('stats').innerHTML=`
-    <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Assigned</div></div>
-    <div class="stat"><div class="stat-n ${ip===total&&total>0?'green':''}">${ip}</div><div class="stat-l">In-Person</div></div>
-    <div class="stat"><div class="stat-n ${tx>0?'green':''}">${tx}</div><div class="stat-l">Texted</div></div>
-    <div class="stat"><div class="stat-n ${ua>0?'red':''}">${ua}</div><div class="stat-l">UA</div></div>`;
+
+  // Build dynamic stat items — always show Assigned, hide others if zero
+  const items = [
+    { label:'Personnel Assigned', val:total, always:true },
+  ];
+
+  // Gather counts per status
+  statuses.forEach(s => {
+    const count = members.filter(m=>m.status===s.v).length;
+    if(count > 0) {
+      const color = s.v==='UA' ? 'red' : (s.v==='PRESENT'||s.v==='IN-PERSON'||s.v==='TEXT') ? 'green' : '';
+      items.push({ label:s.label, val:count, color });
+    }
+  });
+
+  // Also add pending (no status)
+  const noStatus = members.filter(m=>!m.status).length;
+  if(noStatus > 0) items.push({ label:'Pending', val:noStatus, color:'amber' });
+
+  document.getElementById('stats').innerHTML = items.map(it =>
+    `<div class="stat">
+      <div class="stat-n ${it.color||''}">${it.val}</div>
+      <div class="stat-l">${it.label}</div>
+    </div>`
+  ).join('');
 }
 
 // ── Pills ────────────────────────────────────────────────────────
@@ -330,7 +348,7 @@ function txCard(m){
     </div>
     <div class="card-actions">
       <button class="checkin-btn ${ok?'':'primary'}" onclick="markText(${m.id},${ok})">
-        ${ok?'<i class="ti ti-x"></i> Unmark':'<i class="ti ti-check"></i> Marked texted'}
+        ${ok?'<i class="ti ti-x"></i> Unmark':'<i class="ti ti-check"></i> Mark texted'}
       </button>
     </div>
   </div>`;
@@ -523,7 +541,7 @@ function buildReport(){
 
   // Section groups for report
   const ipDefs=[
-    {key:'IP_ASSIGNED',  label:'Assigned',          val:members.length},
+    {key:'IP_ASSIGNED',  label:'Personnel Assigned', val:members.length},
     {key:'IP_ACCOUNTED', label:'In-Person Accounted',val:ipAcct},
     {key:'IP_TEXT',      label:'Text Muster',        val:txAcct},
     {key:'IP_UNACCT',    label:'Unaccounted',        val:ua+pending},
@@ -549,7 +567,7 @@ function buildReport(){
     :'';
 
   // Plain text
-  const plainSummary=ipDefs.filter(d=>!d.key.startsWith('_')&&!hidden.includes(d.key))
+  const plainSummary=ipDefs.filter(d=>!d.key.startsWith('_')&&!hidden.includes(d.key)&&d.val>0)
     .map(d=>`${d.label.padEnd(22)} ${String(d.val).padStart(3)}`);
   const maxR=Math.max(...members.map(m=>(m.rate||'').length),4);
   const maxN=Math.max(...members.map(m=>m.name.length),20);
@@ -569,7 +587,12 @@ function buildReport(){
 
   // HTML
   const summaryHtml=ipDefs.map(d=>{
-    if(d.key.startsWith('_'))return`<div style="height:1px;background:var(--border);margin:3px 0"></div>`;
+    if(d.key.startsWith('_')) {
+      // Only show divider if there are visible non-zero items on both sides
+      return ``;
+    }
+    // Skip zero-value rows entirely
+    if(d.val === 0) return '';
     const isHid=hidden.includes(d.key);
     const danger=(d.key==='IP_UNACCT'||d.key==='IP_UA')&&d.val>0;
     const success=(d.key==='IP_PRESENT'||d.key==='IP_INPERSON'||d.key==='IP_ACCOUNTED')&&d.val>0;
@@ -625,7 +648,7 @@ function buildReport(){
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
       <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
-        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Assigned</div>
+        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Personnel Assigned</div>
         <div style="font-size:22px;font-weight:700">${members.length}</div>
       </div>
       <div style="background:var(--success-bg);border:1px solid color-mix(in srgb,var(--success) 25%,transparent);border-radius:10px;padding:10px 12px">
