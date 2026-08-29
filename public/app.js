@@ -114,11 +114,18 @@ function renderStats(){
   const ip=members.filter(m=>INPERSON_VALS.includes(m.status)).length;
   const tx=members.filter(m=>TEXT_VALS.includes(m.status)).length;
   const ua=members.filter(m=>m.status==='UA').length;
-  document.getElementById('stats').innerHTML=`
-    <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Assigned</div></div>
-    <div class="stat"><div class="stat-n ${ip>0?'green':''}">${ip}</div><div class="stat-l">In-Person</div></div>
-    <div class="stat"><div class="stat-n ${tx>0?'green':''}">${tx}</div><div class="stat-l">Texted</div></div>
-    <div class="stat"><div class="stat-n ${ua>0?'red':''}">${ua}</div><div class="stat-l">UA</div></div>`;
+
+  const card=(val,label,color,onclick)=>`
+    <div class="stat" onclick="${onclick}" style="cursor:pointer;transition:transform .1s,box-shadow .1s" onmousedown="this.style.transform='scale(.97)'" onmouseup="this.style.transform=''" ontouchstart="this.style.transform='scale(.97)'" ontouchend="this.style.transform=''">
+      <div class="stat-n ${color}">${val}</div>
+      <div class="stat-l">${label}</div>
+    </div>`;
+
+  document.getElementById('stats').innerHTML=
+    card(total,'Assigned','',`switchMain('inperson',document.querySelector('[data-tab=inperson]'));setIPView('all')`) +
+    card(ip,'In-Person',ip>0?'green':'',`switchMain('inperson',document.querySelector('[data-tab=inperson]'));setIPView('done')`) +
+    card(tx,'Texted',tx>0?'green':'',`switchMain('text',document.querySelector('[data-tab=text]'));setTXView('done')`) +
+    card(ua,'UA',ua>0?'red':'',`switchMain('inperson',document.querySelector('[data-tab=inperson]'));document.getElementById('ipSearch').value='';setTimeout(()=>{const el=document.getElementById('ipRoster');const cards=[...el.querySelectorAll('.card')];},100);filterByStatus('UA')`);
 }
 
 // ── Pills ────────────────────────────────────────────────────────
@@ -129,7 +136,35 @@ function pill(status){
   return `<span class="pill ${CSS.escape?'pill-'+status:cls}">${st?st.label:status}</span>`;
 }
 
-// ── Sort / Drag ──────────────────────────────────────────────────
+function filterByStatus(status) {
+  // Switch to in-person tab, set filter select to that status, render
+  const ft = document.getElementById('filterSt');
+  if (ft) { ft.value = status; } else {
+    // filterSt doesn't exist on IP tab — use search workaround via ipView
+  }
+  ipView = 'all';
+  // Rebuild render with a temporary override showing only that status
+  renderIPFiltered(status);
+}
+
+function renderIPFiltered(statusFilter) {
+  renderStats();
+  const el = document.getElementById('ipRoster'); if(!el) return;
+
+  const list = members.filter(m => m.status === statusFilter);
+
+  // Update sub tabs to show filtered context
+  const pendingCount = members.filter(m=>!INPERSON_VALS.includes(m.status)).length;
+  const doneCount    = members.filter(m=>INPERSON_VALS.includes(m.status)).length;
+  document.getElementById('ipSubTabs').innerHTML = subTabsHtml('all', pendingCount, doneCount, 'setIPView','ip') +
+    `<span style="font-size:12px;color:var(--text-3);margin-left:6px">Filtered: ${statusFilter} <button class="sm" onclick="setIPView('all')" style="font-size:11px;padding:2px 8px">Clear ×</button></span>`;
+
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><i class="ti ti-users"></i><p>No members with status "${statusFilter}".</p></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="roster">${list.map(ipCard).join('')}</div>`;
+}
 function setSort(dir){
   sortDir=dir;
   if(dir==='asc')  members.sort((a,b)=>a.name.localeCompare(b.name));
@@ -560,7 +595,6 @@ function buildReport(){
   });
   reportPlain=[
     `MUSTER REPORT`,`${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,'',
-    ...(stmtLine?[stmtLine,'']:[]),
     '','FULL ROSTER:',...rosterPlainLines,'',
     `SUBMITTED BY: ${submittedBy||'______________________'}`,
   ].join('\n');
@@ -640,9 +674,6 @@ function buildReport(){
         <div style="font-size:22px;font-weight:700;color:${ua+pending>0?'var(--danger)':'var(--text)'}">${ua+pending}</div>
       </div>
     </div>
-
-    <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Accountability statement</div>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">${stmtHtml}</div>
 
     <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Full roster · ${members.length} members</div>
     <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:3px">${rosterHtml}</div>`;
