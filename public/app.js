@@ -105,28 +105,11 @@ async function load(){
   const data=await api('GET','/api/members');
   members=data.members||[];
   renderSelectOptions();
-  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList();
+  renderStats(); renderIP(); renderTX(); renderRosterList();
 }
 
 // ── Stats ────────────────────────────────────────────────────────
-function renderStats(){
-  const total=members.length;
-  const ip=members.filter(m=>INPERSON_VALS.includes(m.status)).length;
-  const tx=members.filter(m=>TEXT_VALS.includes(m.status)).length;
-  const ua=members.filter(m=>m.status==='UA').length;
-
-  const card=(val,label,color,onclick)=>`
-    <div class="stat" onclick="${onclick}" style="cursor:pointer;transition:transform .1s,box-shadow .1s" onmousedown="this.style.transform='scale(.97)'" onmouseup="this.style.transform=''" ontouchstart="this.style.transform='scale(.97)'" ontouchend="this.style.transform=''">
-      <div class="stat-n ${color}">${val}</div>
-      <div class="stat-l">${label}</div>
-    </div>`;
-
-  document.getElementById('stats').innerHTML=
-    card(total,'Assigned','',`switchMain('inperson',document.querySelector('[data-tab=inperson]'));setIPView('all')`) +
-    card(ip,'In-Person',ip>0?'green':'',`switchMain('inperson',document.querySelector('[data-tab=inperson]'));setIPView('done')`) +
-    card(tx,'Texted',tx>0?'green':'',`switchMain('text',document.querySelector('[data-tab=text]'));setTXView('done')`) +
-    card(ua,'UA',ua>0?'red':'',`switchMain('inperson',document.querySelector('[data-tab=inperson]'));document.getElementById('ipSearch').value='';setTimeout(()=>{const el=document.getElementById('ipRoster');const cards=[...el.querySelectorAll('.card')];},100);filterByStatus('UA')`);
-}
+function renderStats(){ /* removed */ }
 
 // ── Pills ────────────────────────────────────────────────────────
 function pill(status){
@@ -136,35 +119,6 @@ function pill(status){
   return `<span class="pill ${CSS.escape?'pill-'+status:cls}">${st?st.label:status}</span>`;
 }
 
-function filterByStatus(status) {
-  // Switch to in-person tab, set filter select to that status, render
-  const ft = document.getElementById('filterSt');
-  if (ft) { ft.value = status; } else {
-    // filterSt doesn't exist on IP tab — use search workaround via ipView
-  }
-  ipView = 'all';
-  // Rebuild render with a temporary override showing only that status
-  renderIPFiltered(status);
-}
-
-function renderIPFiltered(statusFilter) {
-  renderStats();
-  const el = document.getElementById('ipRoster'); if(!el) return;
-
-  const list = members.filter(m => m.status === statusFilter);
-
-  // Update sub tabs to show filtered context
-  const pendingCount = members.filter(m=>!INPERSON_VALS.includes(m.status)).length;
-  const doneCount    = members.filter(m=>INPERSON_VALS.includes(m.status)).length;
-  document.getElementById('ipSubTabs').innerHTML = subTabsHtml('all', pendingCount, doneCount, 'setIPView','ip') +
-    `<span style="font-size:12px;color:var(--text-3);margin-left:6px">Filtered: ${statusFilter} <button class="sm" onclick="setIPView('all')" style="font-size:11px;padding:2px 8px">Clear ×</button></span>`;
-
-  if (!list.length) {
-    el.innerHTML = `<div class="empty"><i class="ti ti-users"></i><p>No members with status "${statusFilter}".</p></div>`;
-    return;
-  }
-  el.innerHTML = `<div class="roster">${list.map(ipCard).join('')}</div>`;
-}
 function setSort(dir){
   sortDir=dir;
   if(dir==='asc')  members.sort((a,b)=>a.name.localeCompare(b.name));
@@ -211,22 +165,72 @@ function toggleTeamDiv(){
 }
 
 // ── Sub-tab helpers ──────────────────────────────────────────────
-function subTabsHtml(view,pending,done,setFn,prefix){
-  const all=pending+done;
-  return ['all','pending','done'].map(v=>{
-    const count=v==='all'?all:v==='pending'?pending:done;
-    const label=v==='done'?'Checked In':v.charAt(0).toUpperCase()+v.slice(1);
-    const warn=v==='pending'&&pending>0;
-    const ok=v==='done'&&done===members.length&&members.length>0;
-    return `<button class="sub-tab ${view===v?'active':''}" onclick="${setFn}('${v}')" style="${warn?'color:var(--warn)':ok?'color:var(--success)':''}">${label} <span class="badge">${count}</span></button>`;
-  }).join('');
+function dynamicSubTabs(list, view, setFn, doneVals, doneLabel){
+  // Always show All. Then Pending (no status / not in doneVals and no status),
+  // then one tab per status that actually has members.
+  const tabs = [{key:'all', label:'All', count:list.length}];
+
+  const pendingCount = list.filter(m=>!m.status).length;
+  if(pendingCount>0) tabs.push({key:'pending', label:'Pending', count:pendingCount, warn:true});
+
+  const doneCount = list.filter(m=>doneVals.includes(m.status)).length;
+  if(doneCount>0) tabs.push({key:'done', label:doneLabel, count:doneCount, ok:true});
+
+  // One tab per other status present in the list
+  const seen = {};
+  list.forEach(m=>{
+    if(!m.status || doneVals.includes(m.status)) return;
+    seen[m.status] = (seen[m.status]||0)+1;
+  });
+  const statuses = getStatuses();
+  Object.keys(seen).sort().forEach(v=>{
+    const st = statuses.find(x=>x.v===v);
+    tabs.push({key:'st:'+v, label: st?st.label:v, count:seen[v], danger: v==='UA'});
+  });
+
+  return tabs.map(t=>
+    `<button class="sub-tab ${view===t.key?'active':''}" onclick="${setFn}('${t.key}')"
+      style="${t.warn?'color:var(--warn)':t.ok?'color:var(--success)':t.danger?'color:var(--danger)':''}">
+      ${t.label} <span class="badge">${t.count}</span></button>`
+  ).join('');
+}
+
+// Order statuses for section display: done first, then others, pending last
+function groupByStatus(list, doneVals, doneLabel){
+  const statuses = getStatuses();
+  const groups = [];
+
+  const done = list.filter(m=>doneVals.includes(m.status));
+  if(done.length) groups.push({label:doneLabel, color:'var(--success)', bg:'var(--success-bg)', members:done});
+
+  const others = {};
+  list.forEach(m=>{
+    if(!m.status || doneVals.includes(m.status)) return;
+    (others[m.status]=others[m.status]||[]).push(m);
+  });
+  Object.keys(others).sort().forEach(v=>{
+    const st = statuses.find(x=>x.v===v);
+    const isUA = v==='UA';
+    groups.push({
+      label: st?st.label:v,
+      color: isUA?'var(--danger)':'var(--text-2)',
+      bg:    isUA?'var(--danger-bg)':'var(--neutral-bg)',
+      members: others[v]
+    });
+  });
+
+  const pending = list.filter(m=>!m.status);
+  if(pending.length) groups.push({label:'Pending', color:'var(--warn)', bg:'var(--warn-bg)', members:pending});
+
+  return groups;
 }
 
 // ── IN-PERSON RENDER ─────────────────────────────────────────────
 function setIPView(v){ ipView=v; renderIP(); }
 
+const IP_DONE = ['PRESENT','IN-PERSON'];
+
 function renderIP(){
-  renderStats();
   const q=(document.getElementById('ipSearch')?.value||'').toLowerCase();
   const ft=document.getElementById('ipTeam')?.value||'';
   renderSelectOptions();
@@ -237,31 +241,41 @@ function renderIP(){
     return true;
   });
 
-  // In-Person: checked in = PRESENT or IN-PERSON only. Everything else pending.
-  const IP_DONE=['PRESENT','IN-PERSON'];
-  const done=list.filter(m=>IP_DONE.includes(m.status));
-  const pending=list.filter(m=>!IP_DONE.includes(m.status));
-  const show=ipView==='pending'?pending:ipView==='done'?done:list;
+  document.getElementById('ipSubTabs').innerHTML = dynamicSubTabs(list, ipView, 'setIPView', IP_DONE, 'Checked In');
 
-  document.getElementById('ipSubTabs').innerHTML=subTabsHtml(ipView,
-    members.filter(m=>!IP_DONE.includes(m.status)).length,
-    members.filter(m=>IP_DONE.includes(m.status)).length,
-    'setIPView','ip');
+  const el=document.getElementById('ipRoster'); if(!el)return;
 
-  const el=document.getElementById('ipRoster');
-  if(!show.length){
-    el.innerHTML=`<div class="empty"><i class="ti ti-${ipView==='pending'?'circle-check':'users'}"></i><p>${ipView==='pending'?'All checked in!':ipView==='done'?'No one checked in yet.':'No members found.'}</p></div>`;
+  // Filtered views
+  if(ipView==='pending'){
+    const p=list.filter(m=>!m.status);
+    el.innerHTML = p.length?`<div class="roster">${p.map(ipCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-circle-check"></i><p>Everyone has a status.</p></div>`;
+    return;
+  }
+  if(ipView==='done'){
+    const d=list.filter(m=>IP_DONE.includes(m.status));
+    el.innerHTML = d.length?`<div class="roster">${d.map(ipCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-users"></i><p>No one checked in yet.</p></div>`;
+    return;
+  }
+  if(ipView.startsWith('st:')){
+    const v=ipView.slice(3);
+    const f=list.filter(m=>m.status===v);
+    el.innerHTML = f.length?`<div class="roster">${f.map(ipCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-users"></i><p>None in this status.</p></div>`;
     return;
   }
 
-  if(ipView==='all'){
-    let html='';
-    if(pending.length) html+=secHdr('Pending','var(--warn)','var(--warn-bg)',pending.length)+`<div class="roster">${pending.map(ipCard).join('')}</div>`;
-    if(done.length) html+=secHdr('Checked In','var(--success)','var(--success-bg)',done.length,pending.length>0)+`<div class="roster">${done.map(ipCard).join('')}</div>`;
-    el.innerHTML=html;
-  } else {
-    el.innerHTML=`<div class="roster">${show.map(ipCard).join('')}</div>`;
+  // All view — grouped sections, Checked In first
+  const groups = groupByStatus(list, IP_DONE, 'Checked In');
+  if(!groups.length){
+    el.innerHTML=`<div class="empty"><i class="ti ti-users"></i><p>No members found.</p></div>`;
+    return;
   }
+  el.innerHTML = groups.map((g,i)=>
+    secHdr(g.label, g.color, g.bg, g.members.length, i>0) +
+    `<div class="roster">${g.members.map(ipCard).join('')}</div>`
+  ).join('');
 }
 
 function secHdr(label,color,bg,count,mt=false){
@@ -310,10 +324,14 @@ function ipCard(m){
 // ── TEXT MUSTER RENDER ───────────────────────────────────────────
 function setTXView(v){ txView=v; renderTX(); }
 
+const TX_DONE = ['TEXT'];
+
 function renderTX(){
-  renderStats();
   const q=(document.getElementById('txSearch')?.value||'').toLowerCase();
   const ft=document.getElementById('txTeam')?.value||'';
+
+  const ts=document.getElementById('txTeam');
+  if(ts){ const cur=ts.value; ts.innerHTML=`<option value="">All teams</option>${getTeams().map(t=>`<option value="${t}"${cur===t?' selected':''}>${t}</option>`).join('')}`; }
 
   let list=members.filter(m=>{
     if(q&&!m.name.toLowerCase().includes(q)&&!(m.rate||'').toLowerCase().includes(q))return false;
@@ -321,33 +339,39 @@ function renderTX(){
     return true;
   });
 
-  const texted=list.filter(m=>m.status==='TEXT');
-  const pending=list.filter(m=>m.status!=='TEXT');
-  const show=txView==='pending'?pending:txView==='done'?texted:list;
+  document.getElementById('txSubTabs').innerHTML = dynamicSubTabs(list, txView, 'setTXView', TX_DONE, 'Texted In');
 
-  document.getElementById('txSubTabs').innerHTML=subTabsHtml(txView,
-    members.filter(m=>m.status!=='TEXT').length,
-    members.filter(m=>m.status==='TEXT').length,
-    'setTXView','tx');
+  const el=document.getElementById('txRoster'); if(!el)return;
 
-  // rebuild team filter
-  const ts=document.getElementById('txTeam');
-  if(ts){ const cur=ts.value; ts.innerHTML=`<option value="">All teams</option>${getTeams().map(t=>`<option value="${t}"${cur===t?' selected':''}>${t}</option>`).join('')}`; }
-
-  const el=document.getElementById('txRoster');
-  if(!show.length){
-    el.innerHTML=`<div class="empty"><i class="ti ti-message"></i><p>${txView==='pending'?'Everyone texted in!':txView==='done'?'No one has texted in yet.':'No members.'}</p></div>`;
+  if(txView==='pending'){
+    const p=list.filter(m=>!m.status);
+    el.innerHTML = p.length?`<div class="roster">${p.map(txCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-circle-check"></i><p>Everyone has a status.</p></div>`;
+    return;
+  }
+  if(txView==='done'){
+    const d=list.filter(m=>TX_DONE.includes(m.status));
+    el.innerHTML = d.length?`<div class="roster">${d.map(txCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-message"></i><p>No one has texted in yet.</p></div>`;
+    return;
+  }
+  if(txView.startsWith('st:')){
+    const v=txView.slice(3);
+    const f=list.filter(m=>m.status===v);
+    el.innerHTML = f.length?`<div class="roster">${f.map(txCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-users"></i><p>None in this status.</p></div>`;
     return;
   }
 
-  if(txView==='all'){
-    let html='';
-    if(pending.length) html+=secHdr('Pending text','var(--warn)','var(--warn-bg)',pending.length)+`<div class="roster">${pending.map(txCard).join('')}</div>`;
-    if(texted.length) html+=secHdr('Texted In','var(--success)','var(--success-bg)',texted.length,pending.length>0)+`<div class="roster">${texted.map(txCard).join('')}</div>`;
-    el.innerHTML=html;
-  } else {
-    el.innerHTML=`<div class="roster">${show.map(txCard).join('')}</div>`;
+  const groups = groupByStatus(list, TX_DONE, 'Texted In');
+  if(!groups.length){
+    el.innerHTML=`<div class="empty"><i class="ti ti-message"></i><p>No members.</p></div>`;
+    return;
   }
+  el.innerHTML = groups.map((g,i)=>
+    secHdr(g.label, g.color, g.bg, g.members.length, i>0) +
+    `<div class="roster">${g.members.map(txCard).join('')}</div>`
+  ).join('');
 }
 
 function txCard(m){
@@ -381,7 +405,7 @@ async function markText(id, isTexted){
 async function quickSet(id, status){
   await api('PUT',`/api/members/${id}`,{status});
   const m=members.find(x=>x.id===id); if(m) m.status=status;
-  renderStats(); renderIP(); renderTX(); renderEX();
+  renderStats(); renderIP(); renderTX();
 }
 
 let sheetMemberId = null;
@@ -419,61 +443,9 @@ function noteFromSheet(){
   const id=sheetMemberId; const m=members.find(x=>x.id===id); if(!m)return;
   const n=prompt('Note:', m.note||''); closeSheet();
   if(n===null)return;
-  saveNote(id,n).then(()=>{ renderIP(); renderTX(); renderEX(); });
+  saveNote(id,n).then(()=>{ renderIP(); renderTX(); });
 }
 function deleteFromSheet(){ const id=sheetMemberId; closeSheet(); deleteMember(id); }
-
-// ── EXCEPTIONS TAB ────────────────────────────────────────────────
-const PRIMARY_VALS = ['PRESENT','IN-PERSON','TEXT'];
-
-function renderEX(){
-  const el=document.getElementById('exRoster'); if(!el)return;
-  const q=(document.getElementById('exSearch')?.value||'').toLowerCase();
-  const ft=document.getElementById('exTeam')?.value||'';
-
-  const ts=document.getElementById('exTeam');
-  if(ts){ const cur=ts.value; ts.innerHTML=`<option value="">All teams</option>${getTeams().map(t=>`<option value="${t}"${cur===t?' selected':''}>${t}</option>`).join('')}`; }
-
-  const list=members.filter(m=>{
-    if(!m.status||PRIMARY_VALS.includes(m.status))return false;
-    if(q&&!m.name.toLowerCase().includes(q))return false;
-    if(ft&&m.sec!==ft)return false;
-    return true;
-  });
-
-  if(!list.length){
-    el.innerHTML=`<div class="empty"><i class="ti ti-circle-check"></i><p>No exceptions. Everyone is on text or in-person muster.</p></div>`;
-    return;
-  }
-
-  // group by status
-  const byStatus={};
-  list.forEach(m=>{ (byStatus[m.status]=byStatus[m.status]||[]).push(m); });
-  const statuses=getStatuses();
-  const keys=Object.keys(byStatus).sort();
-
-  el.innerHTML = keys.map(k=>{
-    const st=statuses.find(s=>s.v===k);
-    const label=st?st.label:k;
-    const color=k==='UA'?'var(--danger)':'var(--text-2)';
-    const bg=k==='UA'?'var(--danger-bg)':'var(--neutral-bg)';
-    return secHdr(label,color,bg,byStatus[k].length)+
-      `<div class="roster">${byStatus[k].map(m=>`
-        <div class="card${k==='UA'?' ua-card':''}">
-          <div class="card-body">
-            <div class="card-top">
-              ${pill(m.status)}
-              <span class="card-name">${m.name}</span>
-              <span class="card-meta">${m.rate||''}${m.sec?' · '+m.sec:''}</span>
-            </div>
-            ${m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:''}
-          </div>
-          <div class="card-actions">
-            <button class="more-btn" onclick="openSheet(${m.id})">⋯</button>
-          </div>
-        </div>`).join('')}</div>`;
-  }).join('');
-}
 
 // ── Actions ──────────────────────────────────────────────────────
 async function handleStatusChange(id, val, el, tab){
@@ -545,13 +517,13 @@ async function deleteMember(id){
   if(!confirm('Remove this member?'))return;
   await api('DELETE',`/api/members/${id}`);
   members=members.filter(m=>m.id!==id);
-  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList(); toast('Removed');
+  renderStats(); renderIP(); renderTX(); renderRosterList(); toast('Removed');
 }
 
 async function clearAll(){
   if(!confirm('Remove ALL members permanently?'))return;
   await api('DELETE','/api/members'); members=[];
-  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList(); toast('Roster cleared');
+  renderStats(); renderIP(); renderTX(); renderRosterList(); toast('Roster cleared');
 }
 
 async function bulkImport(){
@@ -567,7 +539,7 @@ async function bulkImport(){
   members.push(...(data.members||[]));
   if(document.getElementById('importText')) document.getElementById('importText').value='';
   if(res){res.className='import-result ok';res.textContent=`Imported ${data.added}.`;}
-  renderStats(); renderIP(); renderTX(); renderEX(); renderRosterList(); toast(`Imported ${data.added} members`);
+  renderStats(); renderIP(); renderTX(); renderRosterList(); toast(`Imported ${data.added} members`);
 }
 
 // ── Edit modal ──────────────────────────────────────────────────
@@ -781,7 +753,7 @@ function copyReport(){ navigator.clipboard.writeText(reportPlain).then(()=>toast
 
 // ── Tab switching ────────────────────────────────────────────────
 function switchMain(name, el){
-  ['inperson','text','exceptions','roster','report'].forEach(t=>{
+  ['inperson','text','roster','report'].forEach(t=>{
     const te=document.getElementById('tab-'+t); if(te) te.style.display=t===name?'block':'none';
   });
   document.querySelectorAll('.main-tab').forEach(b=>b.classList.remove('active'));
@@ -789,7 +761,6 @@ function switchMain(name, el){
   if(name==='roster') renderRosterList();
   if(name==='report') buildReport();
   if(name==='text') renderTX();
-  if(name==='exceptions') renderEX();
 }
 
 // ── Utility ──────────────────────────────────────────────────────
