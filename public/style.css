@@ -220,3 +220,23 @@ button.danger { background: var(--danger-bg); color: var(--danger); border-color
   .checkin-btn { min-width:80px; font-size:11px; padding:6px 8px; }
   .rpt-roster-row { grid-template-columns:38px 1fr 80px; }
 }
+
+/* ── Big check-in button ── */
+.big-btn { font-size:13px; font-weight:600; padding:9px 16px; border-radius:10px; min-width:104px; justify-content:center; }
+.big-btn.go { background:var(--accent); color:#fff; border-color:var(--accent); }
+.big-btn.done { background:var(--success-bg); color:var(--success); border-color:color-mix(in srgb,var(--success) 40%,transparent); }
+.more-btn { width:36px; height:36px; padding:0; justify-content:center; border-radius:10px; font-size:18px; color:var(--text-3); }
+
+/* ── Bottom sheet ── */
+.sheet-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:200; display:flex; align-items:flex-end; justify-content:center; }
+.sheet { background:var(--surface); border-radius:20px 20px 0 0; width:100%; max-width:460px; padding:10px 16px calc(16px + env(safe-area-inset-bottom)); max-height:80dvh; overflow-y:auto; animation:slideUp .18s ease-out; }
+@keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+.sheet-handle { width:36px; height:4px; background:var(--border-strong); border-radius:4px; margin:0 auto 12px; }
+.sheet-title { font-size:15px; font-weight:700; margin-bottom:12px; text-align:center; }
+.sheet-opts { display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }
+.sheet-opt { display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface-alt); cursor:pointer; font-size:14px; font-weight:500; color:var(--text); width:100%; text-align:left; }
+.sheet-opt:active { background:var(--bg); }
+.sheet-opt.sel { border-color:var(--accent); background:var(--accent-bg); color:var(--accent-text); }
+.sheet-opt i { font-size:17px; }
+.sheet-cancel { width:100%; padding:12px; border-radius:12px; font-size:14px; font-weight:600; background:var(--surface-alt); border:1px solid var(--border); }
+@media(min-width:600px){ .sheet-bg{align-items:center} .sheet{border-radius:18px; max-width:400px;} }
