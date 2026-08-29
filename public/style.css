@@ -258,3 +258,11 @@ button.danger { background: var(--danger-bg); color: var(--danger); border-color
   .more-btn { width:34px; height:34px; }
   .card-actions { gap:5px; }
 }
+
+/* Both pill */
+.pill-both { background:var(--pro-bg); color:var(--pro-text); }
+/* Multiple pills wrap nicely */
+.card-top .pill + .pill { margin-left:-2px; }
+/* Roster status column wider for combined labels */
+.rpt-roster-row { grid-template-columns:44px 1fr 130px; }
+@media(max-width:600px){ .rpt-roster-row { grid-template-columns:36px 1fr 96px; } .rpt-status{font-size:11px;} }

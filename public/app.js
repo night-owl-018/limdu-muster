@@ -2,10 +2,7 @@
 
 // ── Status definitions ────────────────────────────────────────────
 const DEFAULT_STATUSES = [
-  { v:'PRESENT',    label:'Present' },
-  { v:'IN-PERSON',  label:'In-Person Muster' },
   { v:'PHONE',      label:'Phone muster' },
-  { v:'TEXT',       label:'Texted In' },
   { v:'APPT',       label:'Appointment' },
   { v:'SICK CALL',  label:'Sick call' },
   { v:'SIQ',        label:'SIQ' },
@@ -244,11 +241,29 @@ function renderMuster(){
 
   const el=document.getElementById('ipRoster'); if(!el)return;
 
-  // Filtered single-status view
+  // Filtered views
   if(musterView==='pending'){
-    const p=list.filter(m=>!m.status);
+    const p=list.filter(m=>!m.inPerson&&!m.texted&&!m.status);
     el.innerHTML = p.length?`<div class="roster">${p.map(musterCard).join('')}</div>`
-      :`<div class="empty"><i class="ti ti-circle-check"></i><p>Everyone has a status.</p></div>`;
+      :`<div class="empty"><i class="ti ti-circle-check"></i><p>Everyone is accounted for.</p></div>`;
+    return;
+  }
+  if(musterView==='inperson'){
+    const f=list.filter(m=>m.inPerson);
+    el.innerHTML = f.length?`<div class="roster">${f.map(musterCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-users"></i><p>No one has checked in yet.</p></div>`;
+    return;
+  }
+  if(musterView==='texted'){
+    const f=list.filter(m=>m.texted);
+    el.innerHTML = f.length?`<div class="roster">${f.map(musterCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-message"></i><p>No one has texted in yet.</p></div>`;
+    return;
+  }
+  if(musterView==='both'){
+    const f=list.filter(m=>m.inPerson&&m.texted);
+    el.innerHTML = f.length?`<div class="roster">${f.map(musterCard).join('')}</div>`
+      :`<div class="empty"><i class="ti ti-users"></i><p>No one has both.</p></div>`;
     return;
   }
   if(musterView.startsWith('st:')){
@@ -259,63 +274,66 @@ function renderMuster(){
     return;
   }
 
-  // All view — one section per status, pending last
+  // ── ALL view — sections ──
+  const both     = list.filter(m=> m.inPerson &&  m.texted);
+  const ipOnly   = list.filter(m=> m.inPerson && !m.texted);
+  const txOnly   = list.filter(m=>!m.inPerson &&  m.texted);
+  const noFlags  = list.filter(m=>!m.inPerson && !m.texted);
+
+  // Other statuses among people with no muster flags
+  const others={};
+  noFlags.forEach(m=>{ if(m.status) (others[m.status]=others[m.status]||[]).push(m); });
+  const pending = noFlags.filter(m=>!m.status);
   const statuses=getStatuses();
-  const groups={};
-  list.forEach(m=>{ if(m.status) (groups[m.status]=groups[m.status]||[]).push(m); });
-  const pending=list.filter(m=>!m.status);
 
-  // Order: In-Person first, Texted second, then alphabetical, pending last
-  const order=['IN-PERSON','PRESENT','TEXT'];
-  const keys=Object.keys(groups).sort((a,b)=>{
-    const ai=order.indexOf(a), bi=order.indexOf(b);
-    if(ai>=0&&bi>=0) return ai-bi;
-    if(ai>=0) return -1;
-    if(bi>=0) return 1;
-    return a.localeCompare(b);
-  });
+  let html='', first=true;
+  const add=(label,color,bg,arr)=>{
+    if(!arr.length)return;
+    html += secHdr(label,color,bg,arr.length,!first) + `<div class="roster">${arr.map(musterCard).join('')}</div>`;
+    first=false;
+  };
 
-  let html='';
-  keys.forEach((k,i)=>{
-    const st=statuses.find(x=>x.v===k);
-    const label=st?st.label:k;
-    const ok=['IN-PERSON','PRESENT','TEXT'].includes(k);
-    const ua=k==='UA';
-    const color=ua?'var(--danger)':ok?'var(--success)':'var(--text-2)';
-    const bg=ua?'var(--danger-bg)':ok?'var(--success-bg)':'var(--neutral-bg)';
-    html += secHdr(label,color,bg,groups[k].length,i>0)+`<div class="roster">${groups[k].map(musterCard).join('')}</div>`;
+  add('Both','#7e22ce','var(--pro-bg)',both);
+  add('In-Person Muster','var(--success)','var(--success-bg)',ipOnly);
+  add('Texted In','#0369a1','#e0f2fe',txOnly);
+  Object.keys(others).sort().forEach(v=>{
+    const st=statuses.find(x=>x.v===v);
+    const ua=v==='UA';
+    add(st?st.label:v, ua?'var(--danger)':'var(--text-2)', ua?'var(--danger-bg)':'var(--neutral-bg)', others[v]);
   });
-  if(pending.length){
-    html += secHdr('Pending','var(--warn)','var(--warn-bg)',pending.length,keys.length>0)+
-      `<div class="roster">${pending.map(musterCard).join('')}</div>`;
-  }
+  add('Pending','var(--warn)','var(--warn-bg)',pending);
 
   el.innerHTML = html || `<div class="empty"><i class="ti ti-users"></i><p>No members found.</p></div>`;
 }
 
 function musterSubTabs(list, view){
+  const total = members.length;
   const tabs=[{key:'all',label:'All',count:list.length}];
-  const pendingCount=list.filter(m=>!m.status).length;
+
+  const pendingCount=list.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
   if(pendingCount>0) tabs.push({key:'pending',label:'Pending',count:pendingCount,warn:true});
 
+  // Always show In-Person and Texted with X/total tally
+  const ipCount=list.filter(m=>m.inPerson).length;
+  const txCount=list.filter(m=>m.texted).length;
+  tabs.push({key:'inperson',label:'In-Person Muster',count:`${ipCount}/${total}`,ok:true});
+  tabs.push({key:'texted',label:'Texted In',count:`${txCount}/${total}`,tx:true});
+
+  const bothCount=list.filter(m=>m.inPerson&&m.texted).length;
+  if(bothCount>0) tabs.push({key:'both',label:'Both',count:bothCount,pro:true});
+
+  // One tab per other status (only among those without muster flags)
   const seen={};
-  list.forEach(m=>{ if(m.status) seen[m.status]=(seen[m.status]||0)+1; });
+  list.forEach(m=>{ if(!m.inPerson&&!m.texted&&m.status) seen[m.status]=(seen[m.status]||0)+1; });
   const statuses=getStatuses();
-  const order=['IN-PERSON','PRESENT','TEXT'];
-  Object.keys(seen).sort((a,b)=>{
-    const ai=order.indexOf(a),bi=order.indexOf(b);
-    if(ai>=0&&bi>=0)return ai-bi;
-    if(ai>=0)return -1; if(bi>=0)return 1;
-    return a.localeCompare(b);
-  }).forEach(v=>{
+  Object.keys(seen).sort().forEach(v=>{
     const st=statuses.find(x=>x.v===v);
-    tabs.push({key:'st:'+v,label:st?st.label:v,count:seen[v],
-      ok:['IN-PERSON','PRESENT','TEXT'].includes(v), danger:v==='UA'});
+    tabs.push({key:'st:'+v,label:st?st.label:v,count:seen[v],danger:v==='UA'});
   });
 
   return tabs.map(t=>
     `<button class="sub-tab ${view===t.key?'active':''}" onclick="setMusterView('${t.key}')"
-      style="${t.warn?'color:var(--warn)':t.ok?'color:var(--success)':t.danger?'color:var(--danger)':''}">
+      style="${t.warn?'color:var(--warn)':t.ok?'color:var(--success)':t.tx?'color:#0369a1':t.pro?'color:#7e22ce':t.danger?'color:var(--danger)':''}">
       ${t.label} <span class="badge">${t.count}</span></button>`).join('');
 }
 
@@ -327,8 +345,7 @@ function secHdr(label,color,bg,count,mt=false){
 }
 
 function musterCard(m){
-  const isIP = m.status==='IN-PERSON'||m.status==='PRESENT';
-  const isTX = m.status==='TEXT';
+  const both = m.inPerson && m.texted;
   const noteEl = m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
   const metaRow = showTeamDiv ? `<div class="card-meta-row">
       <span class="field-lbl">TEAM</span>
@@ -340,12 +357,26 @@ function musterCard(m){
         <option value="">--</option>${getDivs().map(d=>`<option value="${d}" ${m.wc===d?'selected':''}>${d}</option>`).join('')}<option value="__new__">+</option>
       </select>
     </div>` : '';
-  return `<div class="card${(isIP||isTX)?'':' pending'}${m.status==='UA'?' ua-card':''}"
+
+  // Pills — can show multiple
+  let pills='';
+  if(both) pills = `<span class="pill pill-both">Both</span>`;
+  else if(m.inPerson) pills = `<span class="pill pill-IN-PERSON">In-Person Muster</span>`;
+  else if(m.texted)   pills = `<span class="pill pill-TEXT">Texted In</span>`;
+  if(m.status){
+    const st=getStatuses().find(x=>x.v===m.status);
+    pills += `<span class="pill pill-${m.status}">${st?st.label:m.status}</span>`;
+  }
+  if(!pills) pills = `<span class="pill pill-none">No status</span>`;
+
+  const accounted = m.inPerson||m.texted||m.status;
+
+  return `<div class="card${accounted?'':' pending'}${m.status==='UA'?' ua-card':''}"
       draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondrop="onDrop(event,${m.id})">
     <div style="cursor:grab;color:var(--text-3);padding:0 2px;display:flex;align-items:center;align-self:stretch"><i class="ti ti-grip-vertical" style="font-size:15px"></i></div>
     <div class="card-body">
       <div class="card-top">
-        ${pill(m.status)}
+        ${pills}
         <span class="card-name">${m.name}</span>
         <span class="card-meta">${m.rate||''}${m.sec&&!showTeamDiv?' · '+m.sec:''}</span>
       </div>
@@ -353,15 +384,23 @@ function musterCard(m){
       ${noteEl}
     </div>
     <div class="card-actions">
-      <button class="act-btn ${isIP?'done':''}" onclick="quickSet(${m.id},'${isIP?'':'IN-PERSON'}')" title="In-Person">
+      <button class="act-btn ${m.inPerson?'done':''}" onclick="toggleFlag(${m.id},'inPerson')" title="In-Person Muster">
         <i class="ti ti-user-check"></i><span class="act-lbl">In-Person</span>
       </button>
-      <button class="act-btn ${isTX?'done-tx':''}" onclick="quickSet(${m.id},'${isTX?'':'TEXT'}')" title="Texted In">
+      <button class="act-btn ${m.texted?'done-tx':''}" onclick="toggleFlag(${m.id},'texted')" title="Texted In">
         <i class="ti ti-message"></i><span class="act-lbl">Texted</span>
       </button>
       <button class="more-btn" onclick="openSheet(${m.id})" title="More">⋯</button>
     </div>
   </div>`;
+}
+
+async function toggleFlag(id, flag){
+  const m=members.find(x=>x.id===id); if(!m)return;
+  const val = !m[flag];
+  await api('PUT',`/api/members/${id}`,{[flag]:val});
+  m[flag]=val;
+  renderMuster();
 }
 
 // ── One-tap set + status sheet ────────────────────────────────────
@@ -388,6 +427,9 @@ function openSheet(id){
       <i class="ti ${SHEET_ICONS[st.v]||'ti-circle'}"></i> ${st.label}
     </button>`).join('');
   document.getElementById('sheetOpts').innerHTML = `
+    <button class="sheet-opt ${m.inPerson?'sel':''}" onclick="flagFromSheet('inPerson')"><i class="ti ti-user-check"></i> ${m.inPerson?'✓ ':''}In-Person Muster</button>
+    <button class="sheet-opt ${m.texted?'sel':''}" onclick="flagFromSheet('texted')"><i class="ti ti-message"></i> ${m.texted?'✓ ':''}Texted In</button>
+    <div style="height:1px;background:var(--border);margin:6px 0"></div>
     <button class="sheet-opt ${!m.status?'sel':''}" onclick="pickStatus('')"><i class="ti ti-circle-dashed"></i> Clear status</button>
     ${opts}
     <button class="sheet-opt" onclick="addStatusFromSheet()" style="border-style:dashed;color:var(--accent-text)"><i class="ti ti-plus"></i> Add new status...</button>
@@ -396,6 +438,7 @@ function openSheet(id){
   document.getElementById('statusSheet').style.display='flex';
 }
 function closeSheet(){ sheetMemberId=null; document.getElementById('statusSheet').style.display='none'; }
+async function flagFromSheet(flag){ const id=sheetMemberId; closeSheet(); await toggleFlag(id,flag); }
 async function pickStatus(v){
   const id=sheetMemberId; const m=members.find(x=>x.id===id); closeSheet();
   if(!v){ await quickSet(id,''); await api('PUT',`/api/members/${id}`,{note:''}); if(m)m.note=''; renderMuster(); return; }
@@ -590,96 +633,84 @@ function buildReport(){
   const dt=String(now.getDate()).padStart(2,'0')+months[now.getMonth()]+String(now.getFullYear()).slice(2);
   const hhmm=String(now.getHours()).padStart(2,'0')+String(now.getMinutes()).padStart(2,'0');
   const statuses=getStatuses();
-  const hidden=getHidden();
-  const cnt=(...vs)=>members.filter(m=>vs.includes(m.status)).length;
-  const ua=cnt('UA');
-  const ipAcct=members.filter(m=>m.status&&m.status!=='UA'&&!TEXT_VALS.includes(m.status)).length;
-  const txAcct=cnt('TEXT');
-  const pending=members.filter(m=>!m.status).length;
+  const total=members.length;
 
-  // Section groups for report
-  const ipDefs=[
-    {key:'IP_ASSIGNED',  label:'Personnel Assigned', val:members.length},
-    {key:'IP_ACCOUNTED', label:'In-Person Accounted',val:ipAcct},
-    {key:'IP_TEXT',      label:'Text Muster',        val:txAcct},
-    {key:'IP_UNACCT',    label:'Unaccounted',        val:ua+pending},
-    {key:'_div1'},
-    {key:'IP_PRESENT',   label:'Present',            val:cnt('PRESENT')},
-    {key:'IP_INPERSON',  label:'In-Person Muster',   val:cnt('IN-PERSON')},
-    {key:'IP_PHONE',     label:'Phone muster',       val:cnt('PHONE')},
-    {key:'IP_TEXT2',     label:'Text muster',        val:txAcct},
-    {key:'IP_APPT',      label:'Appt / Sick',        val:cnt('APPT','SICK CALL')},
-    {key:'IP_SIQ',       label:'SIQ',                val:cnt('SIQ')},
-    {key:'IP_LEAVE',     label:'Leave',              val:cnt('LEAVE')},
-    {key:'IP_TAD',       label:'TAD',                val:cnt('TAD')},
-    {key:'IP_POSTWATCH', label:'Post-Watch',         val:cnt('POST-WATCH')},
-    {key:'IP_LIBERTY',   label:'Liberty',            val:cnt('LIBERTY')},
-    {key:'IP_N85',       label:'Rpt N85 Office',     val:cnt('RPT N85')},
-    {key:'IP_UA',        label:'UA',                 val:ua},
-    ...statuses.filter(s=>!CORE_VALS.includes(s.v)).map(s=>({key:'CUSTOM_'+s.v,label:s.label,val:cnt(s.v)})),
-  ];
+  const ipCount = members.filter(m=>m.inPerson).length;
+  const txCount = members.filter(m=>m.texted).length;
+  const pending = members.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
+  const accounted = members.filter(m=>m.inPerson||m.texted||m.status).length;
 
-  const acctStmt=localStorage.getItem('acct_statement')||'none';
-  const stmtLine=acctStmt==='all_present'?'All present and accounted for.'
-    :acctStmt==='with_exceptions'?'All present and accounted for with the exceptions below.'
-    :'';
+  // Other statuses breakdown (non-zero only)
+  const otherCounts={};
+  members.forEach(m=>{ if(m.status) otherCounts[m.status]=(otherCounts[m.status]||0)+1; });
 
-  // Plain text
-  const plainSummary=[];  // summary breakdown removed
+  const label = m => {
+    const parts=[];
+    if(m.inPerson) parts.push('In-Person');
+    if(m.texted)   parts.push('Texted In');
+    if(m.status){ const st=statuses.find(x=>x.v===m.status); parts.push(st?st.label:m.status); }
+    return parts.length?parts.join(' + '):'No status';
+  };
+
+  // ── Plain text ──
   const maxR=Math.max(...members.map(m=>(m.rate||'').length),4);
   const maxN=Math.max(...members.map(m=>m.name.length),20);
   const rosterPlainLines=members.map(m=>{
-    const st=statuses.find(s=>s.v===m.status);
-    const label=m.status?(st?st.label.toUpperCase():m.status):'NO STATUS';
     const note=m.note?` (${m.note})`:'';
-    return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label}${note}`;
+    return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label(m).toUpperCase()}${note}`;
   });
+
+  const summaryPlain=[
+    `PERSONNEL ASSIGNED:  ${total}`,
+    `IN-PERSON MUSTER:    ${ipCount}/${total}`,
+    `TEXTED IN:           ${txCount}/${total}`,
+    `ACCOUNTED FOR:       ${accounted}/${total}`,
+    `PENDING:             ${pending}`,
+  ];
+  Object.keys(otherCounts).sort().forEach(v=>{
+    const st=statuses.find(x=>x.v===v);
+    summaryPlain.push(`${(st?st.label:v).toUpperCase().padEnd(20)} ${otherCounts[v]}`);
+  });
+
   reportPlain=[
-    `MUSTER REPORT`,`${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,'',
-    '','FULL ROSTER:',...rosterPlainLines,'',
+    'MUSTER REPORT',
+    `${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,
+    '',
+    ...summaryPlain,
+    '',
+    'FULL ROSTER:',
+    ...rosterPlainLines,
+    '',
     `SUBMITTED BY: ${submittedBy||'______________________'}`,
   ].join('\n');
 
-  // HTML
-  const summaryHtml=ipDefs.map(d=>{
-    if(d.key.startsWith('_')) {
-      // Only show divider if there are visible non-zero items on both sides
-      return ``;
-    }
-    // Skip zero-value rows entirely
-    if(d.val === 0) return '';
-    const isHid=hidden.includes(d.key);
-    const danger=(d.key==='IP_UNACCT'||d.key==='IP_UA')&&d.val>0;
-    const success=(d.key==='IP_PRESENT'||d.key==='IP_INPERSON'||d.key==='IP_ACCOUNTED')&&d.val>0;
-    const vc=isHid?'var(--text-3)':danger?'var(--danger)':success?'var(--success)':'var(--text)';
-    return`<div class="rpt-row${isHid?' rpt-hid':''}" onclick="toggleLine('${d.key}')">
-      <span class="rpt-row-label">${d.label}</span>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span class="rpt-row-val" style="color:${vc}">${d.val}</span>
-        <span style="font-size:10px;color:var(--text-3);width:50px;text-align:right">${isHid?'hidden':'tap to hide'}</span>
-      </div>
+  // ── HTML ──
+  const bigCard=(lbl,val,color,bg)=>`
+    <div style="background:${bg};border:1px solid ${color==='var(--text)'?'var(--border)':`color-mix(in srgb,${color} 25%,transparent)`};border-radius:10px;padding:10px 12px">
+      <div style="font-size:10px;color:${color==='var(--text)'?'var(--text-3)':color};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.85">${lbl}</div>
+      <div style="font-size:22px;font-weight:700;color:${color}">${val}</div>
+    </div>`;
+
+  const otherRows = Object.keys(otherCounts).sort().map(v=>{
+    const st=statuses.find(x=>x.v===v);
+    const ua=v==='UA';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:7px;background:var(--surface-alt)">
+      <span style="font-size:13px;color:${ua?'var(--danger)':'var(--text-2)'}">${st?st.label:v}</span>
+      <span style="font-size:15px;font-weight:700;color:${ua?'var(--danger)':'var(--text)'}">${otherCounts[v]}</span>
     </div>`;
   }).join('');
 
   const rosterHtml=members.map((m,i)=>{
-    const st=statuses.find(s=>s.v===m.status);
-    const label=m.status?(st?st.label:'???'):'No status';
-    const vc=m.status==='UA'?'var(--danger)':m.status==='PRESENT'||m.status==='IN-PERSON'?'var(--success)':!m.status?'var(--text-3)':'var(--text-2)';
+    const lb=label(m);
+    const none=!m.inPerson&&!m.texted&&!m.status;
+    const ua=m.status==='UA';
+    const color=ua?'var(--danger)':none?'var(--text-3)':(m.inPerson||m.texted)?'var(--success)':'var(--text-2)';
     const note=m.note?`<span style="font-size:11px;color:var(--text-3)"> · ${m.note}</span>`:'';
-    return`<div class="rpt-roster-row" style="${i%2?'background:var(--surface-alt)':''}">
+    return `<div class="rpt-roster-row" style="${i%2?'background:var(--surface-alt)':''}">
       <span class="rpt-rate">${m.rate||''}</span>
       <span class="rpt-name">${m.name}${note}</span>
-      <span class="rpt-status" style="color:${vc}">${label}</span>
+      <span class="rpt-status" style="color:${color}">${lb}</span>
     </div>`;
-  }).join('');
-
-  const stmtHtml=['all_present','with_exceptions','none'].map(opt=>{
-    const sel=acctStmt===opt;
-    const label=opt==='all_present'?'All present and accounted for':opt==='with_exceptions'?'All present and accounted for with the exceptions below':'No statement';
-    return`<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid ${sel?'var(--accent)':'var(--border)'};border-radius:8px;cursor:pointer;background:${sel?'var(--accent-bg)':'transparent'}">
-      <input type="radio" name="stmt" value="${opt}" ${sel?'checked':''} onchange="localStorage.setItem('acct_statement',this.value);buildReport()" style="width:auto;padding:0;border:none">
-      <span style="font-size:13px;color:${sel?'var(--accent-text)':'var(--text-2)'};font-weight:${sel?'600':'400'}">${label}</span>
-    </label>`;
   }).join('');
 
   const subEl=document.getElementById('submittedByRow');
@@ -687,13 +718,13 @@ function buildReport(){
     <span style="font-size:13px;font-weight:500;color:var(--text-2)">Submitted by</span>
     <select style="font-size:13px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:auto" onchange="handleSubmitterChange(this.value)">
       <option value="">-- Select --</option>
-      ${getSubmitters().map(s=>`<option value="${s}" ${submittedBy===s?'selected':''}>${s}</option>`).join('')}
+      ${getSubmitters().map(x=>`<option value="${x}" ${submittedBy===x?'selected':''}>${x}</option>`).join('')}
       <option value="__new__">+ Add new...</option>
     </select>
     ${submittedBy?`<span style="font-size:12px;color:var(--success);font-weight:600">✓ ${submittedBy}</span>`:''}`;
 
   const warn=document.getElementById('reportWarn');
-  if(warn){ if(pending>0){warn.innerHTML=`<i class="ti ti-alert-triangle"></i> ${pending} member(s) have no status.`;warn.style.display='flex';}else warn.style.display='none'; }
+  if(warn){ if(pending>0){warn.innerHTML=`<i class="ti ti-alert-triangle"></i> ${pending} member(s) not yet accounted for.`;warn.style.display='flex';}else warn.style.display='none'; }
 
   document.getElementById('reportBody').innerHTML=`
     <div style="margin-bottom:14px">
@@ -701,22 +732,20 @@ function buildReport(){
       <div style="font-size:12px;color:var(--text-3);margin-top:2px">${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()} · ${hhmm}</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
-        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Personnel Assigned</div>
-        <div style="font-size:22px;font-weight:700">${members.length}</div>
-      </div>
-      <div style="background:var(--success-bg);border:1px solid color-mix(in srgb,var(--success) 25%,transparent);border-radius:10px;padding:10px 12px">
-        <div style="font-size:10px;color:var(--success);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.8">Accounted</div>
-        <div style="font-size:22px;font-weight:700;color:var(--success)">${ipAcct+txAcct}</div>
-      </div>
-      <div style="background:${ua+pending>0?'var(--danger-bg)':'var(--surface-alt)'};border:1px solid ${ua+pending>0?'color-mix(in srgb,var(--danger) 25%,transparent)':'var(--border)'};border-radius:10px;padding:10px 12px">
-        <div style="font-size:10px;color:${ua+pending>0?'var(--danger)':'var(--text-3)'};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.8">Pending</div>
-        <div style="font-size:22px;font-weight:700;color:${ua+pending>0?'var(--danger)':'var(--text)'}">${ua+pending}</div>
-      </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+      ${bigCard('Personnel Assigned', total, 'var(--text)', 'var(--surface-alt)')}
+      ${bigCard('In-Person Muster', ipCount+'/'+total, 'var(--success)', 'var(--success-bg)')}
+      ${bigCard('Texted In', txCount+'/'+total, '#0369a1', '#e0f2fe')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:${otherRows?'10px':'14px'}">
+      ${bigCard('Accounted For', accounted+'/'+total, 'var(--success)', 'var(--success-bg)')}
+      ${bigCard('Pending', pending, pending>0?'var(--danger)':'var(--text)', pending>0?'var(--danger-bg)':'var(--surface-alt)')}
     </div>
 
-    <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Full roster · ${members.length} members</div>
+    ${otherRows?`<div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Other statuses</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">${otherRows}</div>`:''}
+
+    <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Full roster · ${total} members</div>
     <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:3px">${rosterHtml}</div>`;
 }
 
