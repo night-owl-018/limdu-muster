@@ -2,154 +2,133 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Division Muster — LIMDU Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Division Muster</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div class="app">
-  <nav class="topnav">
-    <div class="topnav-logo"><i class="ti ti-anchor" aria-hidden="true"></i> Division Muster</div>
-    <div class="topnav-date" id="topDate"></div>
-  </nav>
+<nav class="topnav">
+  <div class="topnav-logo"><i class="ti ti-anchor"></i> Division Muster</div>
+  <div class="topnav-date" id="topDate"></div>
+</nav>
 
-  <main class="main">
-    <!-- Stats -->
-    <div class="stats" id="stats"></div>
+<main class="main">
+  <div class="stats" id="stats"></div>
 
-    <!-- Tabs -->
-    <div class="tabs">
-      <button class="tab active" onclick="switchTab('muster', this)">In-Person</button>
-      <button class="tab" onclick="switchTab('text', this)">Text Muster</button>
-      <button class="tab" onclick="switchTab('roster', this)">Manage roster</button>
-      <button class="tab" onclick="switchTab('report', this)">Report</button>
+  <!-- Main tabs -->
+  <div class="main-tabs">
+    <button class="main-tab active" data-tab="inperson" onclick="switchMain('inperson',this)"><i class="ti ti-users"></i> In-Person</button>
+    <button class="main-tab" data-tab="text" onclick="switchMain('text',this)"><i class="ti ti-message"></i> Text Muster</button>
+    <button class="main-tab" data-tab="roster" onclick="switchMain('roster',this)"><i class="ti ti-list"></i> Roster</button>
+    <button class="main-tab" data-tab="report" onclick="switchMain('report',this)"><i class="ti ti-clipboard-text"></i> Report</button>
+  </div>
+
+  <!-- IN-PERSON TAB -->
+  <div id="tab-inperson">
+    <div class="toolbar">
+      <input type="text" id="ipSearch" placeholder="Search..." oninput="renderIP()">
+      <select id="ipTeam" onchange="renderIP()"><option value="">All teams</option></select>
+      <button class="sm" onclick="toggleIPAdd()"><i class="ti ti-user-plus"></i> Add</button>
+      <button class="sm" onclick="toggleStatuses()"><i class="ti ti-settings"></i></button>
+      <button class="sm" id="tdBtn" onclick="toggleTeamDiv()"><i class="ti ti-eye-off"></i></button>
     </div>
-
-    <!-- IN-PERSON MUSTER TAB -->
-    <div id="tab-muster">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <input class="sm" style="max-width:220px" type="text" id="search" placeholder="Search name or rate..." oninput="render()">
-          <select class="sm" id="filterSec" onchange="render()"><option value="">All teams</option></select>
-          <select class="sm" id="filterSt" onchange="render()"><option value="">All statuses</option></select>
-        </div>
-        <div class="toolbar-right">
-          <button class="sm" onclick="toggleMusterAdd()"><i class="ti ti-user-plus" aria-hidden="true"></i> Add member</button>
-          <button class="sm" onclick="toggleManageStatuses()"><i class="ti ti-settings" aria-hidden="true"></i> Statuses</button>
-          <button class="sm" id="teamDivToggleBtn" onclick="toggleTeamDiv()"><i class="ti ti-eye-off" aria-hidden="true"></i> Team/Div</button>
-          <button class="sm primary" onclick="generateReport()"><i class="ti ti-clipboard-text" aria-hidden="true"></i> Generate report</button>
-        </div>
-      </div>
-      <div id="manageStatusPanel" style="display:none" class="add-panel" style="margin-bottom:1rem">
-        <div class="add-panel-title"><i class="ti ti-settings" aria-hidden="true"></i> Manage statuses</div>
-        <div style="font-size:12px;color:var(--accent-text);margin-bottom:10px">Built-in statuses cannot be deleted. Custom ones you added can be removed below.</div>
-        <div id="manageStatusList" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" id="newStatusInput" placeholder="New status name..." style="max-width:200px;font-size:13px">
-          <button class="primary sm" onclick="addNewStatusFromPanel()"><i class="ti ti-plus"></i> Add</button>
-          <button class="sm" onclick="toggleManageStatuses()">Close</button>
-        </div>
-      </div>
-      <div id="roster"></div>
-    </div>
-
-    <!-- TEXT MUSTER TAB -->
-    <div id="tab-text" style="display:none">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <input class="sm" style="max-width:220px" type="text" id="searchText" placeholder="Search name or rate..." oninput="renderText()">
-          <select class="sm" id="filterSecText" onchange="renderText()"><option value="">All teams</option></select>
-        </div>
-      </div>
-      <div id="rosterText"></div>
-    </div>
-
-    <!-- ROSTER TAB -->
-    <div id="tab-roster" style="display:none">
-      <!-- Add single -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <h2 style="font-size:15px;font-weight:600">Members <span id="rosterCount" style="font-size:13px;font-weight:400;color:var(--text-3)"></span></h2>
-        <button class="sm primary" onclick="toggleAddPanel()"><i class="ti ti-user-plus" aria-hidden="true"></i> Add member</button>
-      </div>
-
-      <div id="addPanel" style="display:none" class="add-panel">
-        <div class="add-panel-title"><i class="ti ti-user-plus" aria-hidden="true"></i> Add new member</div>
-        <div class="add-grid">
-          <div class="field"><label>Last, First MI</label><input type="text" id="nName" placeholder="SMITH, JOHN A"></div>
-          <div class="field"><label>Rate</label><input type="text" id="nRate" placeholder="STG2" style="max-width:90px"></div>
-          <div class="field"><label>Team</label><select id="nSec" style="font-size:13px"><option value="">-- Team --</option><option>BLUE</option><option>RED</option><option>WHITE</option><option value="__new_team__">+ Add new...</option></select></div>
-          <div class="field"><label>Division</label><select id="nWC" style="font-size:13px"><option value="">-- Division --</option><option>N85</option><option value="__new_div__">+ Add new...</option></select></div>
-          <div class="field" style="display:flex;align-items:flex-end;gap:6px">
-            <button class="primary" onclick="addMember()"><i class="ti ti-check" aria-hidden="true"></i> Add</button>
-            <button onclick="toggleAddPanel()">Cancel</button>
-          </div>
-        </div>
-        <div id="addErr" style="display:none;color:var(--danger-text);font-size:13px;margin-top:8px"></div>
-      </div>
-
-      <!-- Import -->
-      <div class="import-panel">
-        <h3><i class="ti ti-table-import" aria-hidden="true"></i> Bulk import</h3>
-        <p>Paste your roster below — one person per line. Columns separated by commas or tabs.</p>
-        <div class="import-example">Last Name, First MI &nbsp;·&nbsp; Rate &nbsp;·&nbsp; Team &nbsp;·&nbsp; Division<br>
-SMITH, JOHN A, STG2, 1, SONAR<br>
-JONES, MARY B, STG1, 1, SONAR<br>
-BROWN, ERIC T, STGC, 2, TRNG</div>
-        <textarea id="importText" placeholder="Paste roster here..."></textarea>
-        <div class="import-actions">
-          <button class="primary" onclick="bulkImport()"><i class="ti ti-upload" aria-hidden="true"></i> Import</button>
-          <button onclick="document.getElementById('importText').value=''">Clear</button>
-          <span id="importResult" class="import-result"></span>
-        </div>
-      </div>
-
-      <!-- Roster list -->
-      <div id="rosterList"></div>
-
-      <!-- Danger zone -->
-      <div class="danger-zone">
-        <div class="danger-zone-text">
-          <h4>Clear entire roster</h4>
-          <p>Removes all members permanently. This cannot be undone.</p>
-        </div>
-        <button class="danger" onclick="clearAll()"><i class="ti ti-trash" aria-hidden="true"></i> Clear roster</button>
-      </div>
-    </div>
-
-    <!-- REPORT TAB -->
-    <div id="tab-report" style="display:none">
-      <div class="report-panel">
-        <div class="report-hdr">
-          <h3><i class="ti ti-file-text" aria-hidden="true"></i> Muster report</h3>
-          <button class="sm" onclick="copyReport()"><i class="ti ti-copy" aria-hidden="true"></i> Copy</button>
-          <button class="sm primary" onclick="generateReport();switchTab('report',document.querySelectorAll('.tab')[3])">Refresh</button>
-        </div>
-        <pre id="reportPre" class="report-pre">Hit "Generate report" or switch to this tab to build the report.</pre>
-        <div id="reportWarn" style="display:none" class="report-warn"></div>
-        <div id="submittedByRow" style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"></div>
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-          <div style="font-size:12px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Manage custom statuses</div>
-          <div id="customStatusList" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-          <script>
-            function renderCustomStatuses() {
-              const extra = JSON.parse(localStorage.getItem('extra_statuses')||'[]');
-              const el = document.getElementById('customStatusList');
-              if (!el) return;
-              if (!extra.length) { el.innerHTML = '<span style="font-size:12px;color:var(--text-3)">No custom statuses added yet.</span>'; return; }
-              el.innerHTML = extra.map(v => `
-                <span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-alt);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12px">
-                  ${v}
-                  <button class="icon" style="padding:0;width:16px;height:16px;font-size:12px;color:var(--danger-text)" onclick="deleteStatus('${v}');renderCustomStatuses()">×</button>
-                </span>`).join('');
-            }
-            document.addEventListener('DOMContentLoaded', renderCustomStatuses);
-          </script>
+    <div id="ipAddPanel" style="display:none" class="add-panel">
+      <div class="add-panel-title"><i class="ti ti-user-plus"></i> Add member</div>
+      <div class="add-grid">
+        <div class="field"><label>Last, First MI</label><input type="text" id="mName" placeholder="SMITH, JOHN A"></div>
+        <div class="field"><label>Rate</label><input type="text" id="mRate" placeholder="STG2"></div>
+        <div class="field"><label>Team</label><select id="mSec"><option value="">--</option></select></div>
+        <div class="field"><label>Division</label><select id="mWC"><option value="">--</option></select></div>
+        <div style="display:flex;align-items:flex-end;gap:5px">
+          <button class="primary sm" onclick="addFromIP()"><i class="ti ti-check"></i> Add</button>
+          <button class="sm" onclick="toggleIPAdd()">Cancel</button>
         </div>
       </div>
     </div>
-  </main>
-</div>
+    <div id="statusManagePanel" style="display:none" class="status-manage-panel">
+      <div style="font-size:13px;font-weight:600;color:var(--accent-text);margin-bottom:8px"><i class="ti ti-settings"></i> Manage statuses</div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:8px">Built-in statuses are fixed. Custom ones can be deleted.</div>
+      <div id="statusChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="newStatusName" placeholder="New status..." style="flex:1;font-size:13px;height:32px;border:1px solid var(--border);border-radius:8px;padding:0 10px;background:var(--surface);color:var(--text);outline:none">
+        <button class="primary sm" onclick="addCustomStatus()"><i class="ti ti-plus"></i> Add</button>
+        <button class="sm" onclick="toggleStatuses()">Close</button>
+      </div>
+    </div>
+    <div id="ipSubTabs" class="sub-tabs"></div>
+    <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text-3)">Sort:</span>
+      <button class="sm" id="sortAscBtn" onclick="setSort('asc')"><i class="ti ti-sort-ascending"></i> A–Z</button>
+      <button class="sm" id="sortDescBtn" onclick="setSort('desc')"><i class="ti ti-sort-descending"></i> Z–A</button>
+    </div>
+    <div id="ipRoster"></div>
+  </div>
+
+  <!-- TEXT MUSTER TAB -->
+  <div id="tab-text" style="display:none">
+    <div class="toolbar">
+      <input type="text" id="txSearch" placeholder="Search..." oninput="renderTX()">
+      <select id="txTeam" onchange="renderTX()"><option value="">All teams</option></select>
+    </div>
+    <div id="txSubTabs" class="sub-tabs"></div>
+    <div id="txRoster"></div>
+  </div>
+
+  <!-- ROSTER MANAGEMENT TAB -->
+  <div id="tab-roster" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:15px;font-weight:600">Members <span id="rosterCount" style="font-size:13px;font-weight:400;color:var(--text-3)"></span></span>
+      <button class="primary sm" onclick="toggleRosterAdd()"><i class="ti ti-user-plus"></i> Add member</button>
+    </div>
+    <div id="rosterAddPanel" style="display:none" class="add-panel">
+      <div class="add-panel-title"><i class="ti ti-user-plus"></i> Add new member</div>
+      <div class="add-grid">
+        <div class="field"><label>Last, First MI</label><input type="text" id="nName" placeholder="SMITH, JOHN A"></div>
+        <div class="field"><label>Rate</label><input type="text" id="nRate" placeholder="STG2"></div>
+        <div class="field"><label>Team</label><select id="nSec"><option value="">--</option></select></div>
+        <div class="field"><label>Division</label><select id="nWC"><option value="">--</option></select></div>
+        <div style="display:flex;align-items:flex-end;gap:5px">
+          <button class="primary" onclick="addMember()"><i class="ti ti-check"></i> Add</button>
+          <button onclick="toggleRosterAdd()">Cancel</button>
+        </div>
+      </div>
+      <div id="addErr" style="display:none;color:var(--danger);font-size:13px;margin-top:6px"></div>
+    </div>
+    <div class="import-panel">
+      <h3><i class="ti ti-table-import"></i> Bulk import</h3>
+      <p>One person per line: <code>Name, Rate, Team, Division</code></p>
+      <div class="import-example">SMITH, JOHN A, STG2, BLUE, N85<br>JONES, MARY B, STG1, RED, N85</div>
+      <textarea id="importText" placeholder="Paste roster here..."></textarea>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+        <button class="primary sm" onclick="bulkImport()"><i class="ti ti-upload"></i> Import</button>
+        <button class="sm" onclick="document.getElementById('importText').value=''">Clear</button>
+        <span id="importResult" class="import-result"></span>
+      </div>
+    </div>
+    <div id="rosterList"></div>
+    <div class="danger-zone">
+      <div><h4>Clear entire roster</h4><p>Removes all members. Cannot be undone.</p></div>
+      <button class="danger sm" onclick="clearAll()"><i class="ti ti-trash"></i> Clear</button>
+    </div>
+  </div>
+
+  <!-- REPORT TAB -->
+  <div id="tab-report" style="display:none">
+    <div class="report-panel">
+      <div class="report-hdr">
+        <h3><i class="ti ti-file-text"></i> Muster report</h3>
+        <button class="sm" onclick="copyReport()"><i class="ti ti-copy"></i> Copy</button>
+        <button class="sm primary" onclick="buildReport()">Refresh</button>
+      </div>
+      <div id="reportBody">
+        <div style="color:var(--text-3);font-size:13px">Switch to this tab or hit Refresh to build the report.</div>
+      </div>
+      <div id="reportWarn" style="display:none" class="report-warn"></div>
+      <div id="submittedByRow" style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap"></div>
+    </div>
+  </div>
+</main>
 
 <div class="toast" id="toast"></div>
 
@@ -158,14 +137,14 @@ BROWN, ERIC T, STGC, 2, TRNG</div>
   <div class="modal">
     <h3>Edit member</h3>
     <div class="modal-grid">
-      <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Last, First MI</label><input type="text" id="eName"></div>
-      <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Rate</label><input type="text" id="eRate"></div>
-      <div class="field"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Team</label><select id="eSec" style="font-size:14px"><option value="">-- Team --</option><option>BLUE</option><option>RED</option><option>WHITE</option><option value="__new_team__">+ Add new...</option></select></div>
-      <div class="field full"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);display:block;margin-bottom:4px">Division</label><select id="eWC" style="font-size:14px"><option value="">-- Division --</option><option>N85</option><option value="__new_div__">+ Add new...</option></select></div>
+      <div class="full field"><label style="font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px">Last, First MI</label><input type="text" id="eName"></div>
+      <div class="field"><label style="font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px">Rate</label><input type="text" id="eRate"></div>
+      <div class="field"><label style="font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px">Team</label><select id="eSec"></select></div>
+      <div class="full field"><label style="font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px">Division</label><select id="eWC"></select></div>
     </div>
     <div class="modal-actions">
       <button onclick="closeEdit()">Cancel</button>
-      <button class="primary" onclick="saveEdit()"><i class="ti ti-check" aria-hidden="true"></i> Save</button>
+      <button class="primary" onclick="saveEdit()"><i class="ti ti-check"></i> Save</button>
     </div>
   </div>
 </div>
