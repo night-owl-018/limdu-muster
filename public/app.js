@@ -3,6 +3,7 @@
 // ── Status list ───────────────────────────────────────────────────────────────
 const DEFAULT_STATUSES = [
   { v: 'PRESENT',    label: 'Present' },
+  { v: 'IN-PERSON',  label: 'In-Person Muster' },
   { v: 'PHONE',      label: 'Phone muster' },
   { v: 'TEXT',       label: 'Text muster' },
   { v: 'APPT',       label: 'Appointment' },
@@ -10,6 +11,7 @@ const DEFAULT_STATUSES = [
   { v: 'SIQ',        label: 'SIQ' },
   { v: 'LEAVE',      label: 'Leave' },
   { v: 'TAD',        label: 'TAD' },
+  { v: 'POST-WATCH', label: 'Post-watch' },
   { v: 'LIBERTY',    label: 'Liberty' },
   { v: 'RPT N85',    label: 'Report to N85 Office' },
   { v: 'UA',         label: 'UA' },
@@ -465,9 +467,10 @@ function render() {
     return true;
   });
 
-  // Split pending vs done — UA stays in pending
-  const pending = list.filter(m => !m.status || m.status === 'UA');
-  const done    = list.filter(m =>  m.status && m.status !== 'UA');
+  // In-Person: "checked in" = PRESENT or IN-PERSON, "pending" = anything else including no status or UA
+  const INPERSON_STATUSES = ['PRESENT','IN-PERSON'];
+  const pending = list.filter(m => !INPERSON_STATUSES.includes(m.status));
+  const done    = list.filter(m =>  INPERSON_STATUSES.includes(m.status));
 
   // Which to show
   const showList = musterView === 'pending' ? pending
@@ -476,8 +479,8 @@ function render() {
 
   const rosterEl = document.getElementById('roster');
 
-  const pendingCount = members.filter(m => !m.status || m.status === 'UA').length;
-  const doneCount    = members.filter(m =>  m.status && m.status !== 'UA').length;
+  const pendingCount = members.filter(m => !INPERSON_STATUSES.includes(m.status)).length;
+  const doneCount    = members.filter(m =>  INPERSON_STATUSES.includes(m.status)).length;
 
   const viewTabs = `
     <div style="display:flex;gap:4px;margin-bottom:10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:3px;width:fit-content">
@@ -638,6 +641,7 @@ function generateReport() {
     { key:'SIQ',       label:'SIQ',              val: cnt('SIQ') },
     { key:'LEAVE',     label:'Leave',            val: cnt('LEAVE') },
     { key:'TAD',       label:'TAD',              val: cnt('TAD') },
+    { key:'POSTWATCH', label:'Post-Watch',       val: cnt('POST-WATCH') },
     { key:'LIBERTY',   label:'Liberty',          val: cnt('LIBERTY') },
     { key:'RPTN85',    label:'Rpt N85 Office',   val: cnt('RPT N85') },
     { key:'UA',        label:'UA',               val: ua },
@@ -780,7 +784,7 @@ function generateReport() {
   }
 
   if (document.getElementById('tab-report').style.display==='none')
-    switchTab('report', document.querySelectorAll('.tab')[2]);
+    switchTab('report', document.querySelectorAll('.tab')[3]);
 }
 
 let showTeamDiv = localStorage.getItem('showTeamDiv') !== 'false';
@@ -819,6 +823,7 @@ function generateReport() {
     { key:'SIQ',       label:'SIQ',             val: cnt('SIQ') },
     { key:'LEAVE',     label:'Leave',           val: cnt('LEAVE') },
     { key:'TAD',       label:'TAD',             val: cnt('TAD') },
+    { key:'POSTWATCH', label:'Post-Watch',      val: cnt('POST-WATCH') },
     { key:'LIBERTY',   label:'Liberty',         val: cnt('LIBERTY') },
     { key:'RPTN85',    label:'RPT N85 Office',  val: cnt('RPT N85') },
     { key:'UA',        label:'UA',              val: ua, danger: ua > 0 },
@@ -938,12 +943,133 @@ function copyReport() {
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
+// Text muster view — shows all members, pending those without TEXT status
+let textMusterView = 'all';
+
+function setTextMusterView(v) {
+  textMusterView = v;
+  document.querySelectorAll('.text-view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  renderText();
+}
+
+function renderText() {
+  const q  = (document.getElementById('searchText')||{value:''}).value.toLowerCase();
+  const fs = (document.getElementById('filterSecText')||{value:''}).value;
+
+  const secSel = document.getElementById('filterSecText');
+  if (secSel) {
+    const cur = secSel.value;
+    secSel.innerHTML = '<option value="">All teams</option>';
+    sections().forEach(s => { const o = new Option('Team '+s, s); if(s===cur)o.selected=true; secSel.add(o); });
+  }
+
+  // TEXT muster: "checked in" = has TEXT status, "pending" = does not
+  const TEXT_STATUSES = ['TEXT'];
+  let list = members.filter(m => {
+    if (q && !m.name.toLowerCase().includes(q) && !(m.rate||'').toLowerCase().includes(q)) return false;
+    if (fs && m.sec !== fs) return false;
+    return true;
+  });
+
+  const textDone    = list.filter(m => TEXT_STATUSES.includes(m.status));
+  const textPending = list.filter(m => !TEXT_STATUSES.includes(m.status));
+  const showList    = textMusterView === 'pending' ? textPending
+                    : textMusterView === 'done'    ? textDone
+                    : list;
+
+  const pendingCount = members.filter(m => !TEXT_STATUSES.includes(m.status)).length;
+  const doneCount    = members.filter(m =>  TEXT_STATUSES.includes(m.status)).length;
+
+  const viewTabs = `
+    <div style="display:flex;gap:4px;margin-bottom:10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:3px;width:fit-content">
+      <button class="text-view-tab tab ${textMusterView==='all'?'active':''}" data-view="all" onclick="setTextMusterView('all')">
+        All <span style="font-size:11px;opacity:.7">${list.length}</span>
+      </button>
+      <button class="text-view-tab tab ${textMusterView==='pending'?'active':''}" data-view="pending" onclick="setTextMusterView('pending')"
+        style="${pendingCount>0?'color:var(--warn-text)':''}">
+        Pending <span style="font-size:11px;opacity:.7">${pendingCount}</span>
+      </button>
+      <button class="text-view-tab tab ${textMusterView==='done'?'active':''}" data-view="done" onclick="setTextMusterView('done')"
+        style="${doneCount===members.length&&members.length>0?'color:var(--success-text)':''}">
+        Texted In <span style="font-size:11px;opacity:.7">${doneCount}</span>
+      </button>
+    </div>`;
+
+  const sortBar = `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text-3)">Sort:</span>
+      <button class="sm ${sortDir==='asc'?'primary':''}" onclick="setSort('asc')"><i class="ti ti-sort-ascending"></i> A–Z</button>
+      <button class="sm ${sortDir==='desc'?'primary':''}" onclick="setSort('desc')"><i class="ti ti-sort-descending"></i> Z–A</button>
+    </div>`;
+
+  const el = document.getElementById('rosterText');
+  if (!el) return;
+
+  if (!showList.length) {
+    const msg = textMusterView === 'pending' ? 'All members have texted in.' :
+                textMusterView === 'done'    ? 'No members have texted in yet.' :
+                'No members match the filter.';
+    el.innerHTML = viewTabs + sortBar + `<div class="empty"><i class="ti ti-message"></i><p>${msg}</p></div>`;
+    return;
+  }
+
+  // In all view: pending first then done
+  let html = '';
+  if (textMusterView === 'all') {
+    if (textPending.length) html += `
+      <div class="sec-hdr">
+        <span class="sec-hdr-label" style="color:var(--warn-text)">Pending text</span>
+        <span class="sec-hdr-count" style="background:var(--warn-bg);color:var(--warn-text)">${textPending.length}</span>
+        <hr></div>
+      <div class="roster">${textPending.map(m => makeTextCard(m)).join('')}</div>`;
+    if (textDone.length) html += `
+      <div class="sec-hdr" style="margin-top:${textPending.length?'16px':'0'}">
+        <span class="sec-hdr-label" style="color:var(--success-text)">Texted In</span>
+        <span class="sec-hdr-count" style="background:var(--success-bg);color:var(--success-text)">${textDone.length}</span>
+        <hr></div>
+      <div class="roster">${textDone.map(m => makeTextCard(m)).join('')}</div>`;
+  } else {
+    html = `<div class="roster">${showList.map(m => makeTextCard(m)).join('')}</div>`;
+  }
+
+  el.innerHTML = viewTabs + sortBar + html;
+}
+
+function makeTextCard(m) {
+  const isTexted = m.status === 'TEXT';
+  return `<div class="card${isTexted?'':' pending'}">
+    <div class="card-body">
+      <div class="card-top">
+        ${pill(m.status)}
+        <span class="card-name">${m.name}</span>
+        <span class="card-meta">${m.rate||''} ${m.sec?'· '+m.sec:''}</span>
+      </div>
+      ${m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:12px"></i> ${m.note}</div>`:''}
+    </div>
+    <div class="card-actions">
+      <button class="sm ${isTexted?'':'primary'}" onclick="markText(${m.id},${isTexted})">
+        ${isTexted?'<i class="ti ti-x"></i> Unmark':'<i class="ti ti-check"></i> Mark texted'}
+      </button>
+    </div>
+  </div>`;
+}
+
+async function markText(id, isTexted) {
+  const newStatus = isTexted ? '' : 'TEXT';
+  await setStatus(id, newStatus);
+  renderText();
+}
+
 function switchTab(name, el) {
-  ['muster','roster','report'].forEach(t => document.getElementById('tab-'+t).style.display = t===name ? 'block' : 'none');
+  ['muster','text','roster','report'].forEach(t => {
+    const tabEl = document.getElementById('tab-'+t);
+    if (tabEl) tabEl.style.display = t===name ? 'block' : 'none';
+  });
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
   if (name === 'roster') renderRosterList();
   if (name === 'report') { generateReport(); if(typeof renderCustomStatuses==='function') renderCustomStatuses(); }
+  if (name === 'text') renderText();
 }
 
 function toggleAddPanel() {
