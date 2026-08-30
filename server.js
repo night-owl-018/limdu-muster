@@ -64,7 +64,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req).catch(() => null);
     if (!body || !body.name) return json(res, { error: 'Name required' }, 400);
     const data = readData();
-    const m = { id: data.nextId++, name: body.name.toUpperCase().trim(), rate: (body.rate||'').toUpperCase().trim(), sec: (body.sec||'').trim(), wc: (body.wc||'').toUpperCase().trim(), status: '', note: '' };
+    const m = { id: data.nextId++, name: body.name.toUpperCase().trim(), rate: (body.rate||'').toUpperCase().trim(), sec: (body.sec||'').trim(), wc: (body.wc||'').toUpperCase().trim(), status: '', note: '', inPerson: false, texted: false };
     data.members.push(m); writeData(data);
     return json(res, m, 201);
   }
@@ -86,7 +86,7 @@ const server = http.createServer(async (req, res) => {
     const added = [];
     for (const row of body.members) {
       if (!row.name) continue;
-      const m = { id: data.nextId++, name: row.name.toUpperCase().trim(), rate: (row.rate||'').toUpperCase().trim(), sec: (row.sec||'').trim(), wc: (row.wc||'').toUpperCase().trim(), status: '', note: '' };
+      const m = { id: data.nextId++, name: row.name.toUpperCase().trim(), rate: (row.rate||'').toUpperCase().trim(), sec: (row.sec||'').trim(), wc: (row.wc||'').toUpperCase().trim(), status: '', note: '', inPerson: false, texted: false };
       data.members.push(m); added.push(m);
     }
     writeData(data);
@@ -101,6 +101,8 @@ const server = http.createServer(async (req, res) => {
     const m = data.members.find(x => x.id === parseInt(mMatch[1]));
     if (!m) return json(res, { error: 'Not found' }, 404);
     if (body.status !== undefined) m.status = body.status;
+    if (body.inPerson !== undefined) m.inPerson = !!body.inPerson;
+    if (body.texted !== undefined) m.texted = !!body.texted;
     if (body.note !== undefined) m.note = body.note;
     if (body.name !== undefined) m.name = body.name.toUpperCase().trim();
     if (body.rate !== undefined) m.rate = body.rate.toUpperCase().trim();
