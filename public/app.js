@@ -363,16 +363,16 @@ function musterCard(m){
 
   const hasAny = m.inPerson||m.texted||!!m.status;
 
-  // 2C — once mustered, collapse to Clear + ⋯ only
-  const actions = hasAny
-    ? `<button class="clear-btn active" onclick="clearAllStatus(${m.id})" title="Clear all statuses">
-         <i class="ti ti-eraser"></i><span class="act-lbl">Clear</span>
-       </button>`
-    : `<button class="act-btn" onclick="toggleFlag(${m.id},'inPerson')" title="In-Person Muster">
+  // Show the button for whatever is NOT set yet, plus Clear once anything is set
+  let actions = '';
+  if(!m.inPerson) actions += `<button class="act-btn" onclick="toggleFlag(${m.id},'inPerson')" title="Mark In-Person Muster">
          <i class="ti ti-user-check"></i><span class="act-lbl">In-Person</span>
-       </button>
-       <button class="act-btn" onclick="toggleFlag(${m.id},'texted')" title="Texted In">
+       </button>`;
+  if(!m.texted) actions += `<button class="act-btn" onclick="toggleFlag(${m.id},'texted')" title="Mark Texted In">
          <i class="ti ti-message"></i><span class="act-lbl">Texted</span>
+       </button>`;
+  if(hasAny) actions += `<button class="clear-btn active" onclick="clearAllStatus(${m.id})" title="Clear all statuses">
+         <i class="ti ti-eraser"></i><span class="act-lbl">Clear</span>
        </button>`;
 
   return `<div class="card${hasAny?'':' pending'}${m.status==='UA'?' ua-card':''}"
