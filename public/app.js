@@ -394,6 +394,23 @@ function musterCard(m){
   </div>`;
 }
 
+// Clears every status on every member — roster itself is untouched
+async function resetAllStatuses(){
+  const marked = members.filter(m=>m.inPerson||m.texted||m.status).length;
+  if(!marked){ toast('Nothing to reset — all members are already pending'); return; }
+  if(!confirm(`Reset the muster for all ${marked} marked member(s)?\n\nThis clears In-Person, Texted In, every other status, and all notes. The roster itself is not affected.\n\nContinue?`)) return;
+
+  await Promise.all(members.map(m=>{
+    if(!m.inPerson && !m.texted && !m.status) return null;
+    return api('PUT',`/api/members/${m.id}`,{status:'',note:'',inPerson:false,texted:false});
+  }).filter(Boolean));
+
+  members.forEach(m=>{ m.status=''; m.note=''; m.inPerson=false; m.texted=false; });
+  reportFilter='all';
+  renderMuster();
+  toast(`Muster reset — ${marked} member(s) cleared`);
+}
+
 // Clears only the non-standard status (Leave, Sick Call, etc.), keeps muster flags
 async function clearOtherStatus(id){
   await api('PUT',`/api/members/${id}`,{status:'',note:''});
