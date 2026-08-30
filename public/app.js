@@ -349,19 +349,19 @@ function musterCard(m){
       </select>
     </div>` : '';
 
-  // Pills — one per active thing. Click to clear.
+  // Pills — only what is actually selected. No "Both".
   let pills='';
-  if(m.inPerson) pills += `<span class="pill pill-IN-PERSON clickable" onclick="toggleFlag(${m.id},'inPerson')" title="Click to clear">In-Person Muster</span>`;
-  if(m.texted)   pills += `<span class="pill pill-TEXT clickable" onclick="toggleFlag(${m.id},'texted')" title="Click to clear">Texted In</span>`;
+  if(m.inPerson) pills += `<span class="pill pill-IN-PERSON">In-Person Muster</span>`;
+  if(m.texted)   pills += `<span class="pill pill-TEXT">Texted In</span>`;
   if(m.status){
     const st=getStatuses().find(x=>x.v===m.status);
-    pills += `<span class="pill pill-${m.status} clickable" onclick="clearStatus(${m.id})" title="Click to clear">${st?st.label:m.status}</span>`;
+    pills += `<span class="pill pill-${m.status}">${st?st.label:m.status}</span>`;
   }
   if(!pills) pills = `<span class="pill pill-none">No status</span>`;
 
-  const accounted = m.inPerson||m.texted||m.status;
+  const hasAny = m.inPerson||m.texted||!!m.status;
 
-  return `<div class="card${accounted?'':' pending'}${m.status==='UA'?' ua-card':''}"
+  return `<div class="card${hasAny?'':' pending'}${m.status==='UA'?' ua-card':''}"
       draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondrop="onDrop(event,${m.id})">
     <div style="cursor:grab;color:var(--text-3);padding:0 2px;display:flex;align-items:center;align-self:stretch"><i class="ti ti-grip-vertical" style="font-size:15px"></i></div>
     <div class="card-body">
@@ -380,9 +380,20 @@ function musterCard(m){
       <button class="act-btn ${m.texted?'done-tx':''}" onclick="toggleFlag(${m.id},'texted')" title="Texted In">
         <i class="ti ti-message"></i><span class="act-lbl">Texted</span>
       </button>
+      <button class="clear-btn" onclick="clearAllStatus(${m.id})" title="Clear all statuses" ${hasAny?'':'disabled'}>
+        <i class="ti ti-eraser"></i><span class="act-lbl">Clear</span>
+      </button>
       <button class="more-btn" onclick="openSheet(${m.id})" title="More">⋯</button>
     </div>
   </div>`;
+}
+
+// Issue 3 + 4: one action clears every status type
+async function clearAllStatus(id){
+  await api('PUT',`/api/members/${id}`,{status:'',note:'',inPerson:false,texted:false});
+  const m=members.find(x=>x.id===id);
+  if(m){ m.status=''; m.note=''; m.inPerson=false; m.texted=false; }
+  renderMuster();
 }
 
 async function clearStatus(id){
@@ -635,20 +646,57 @@ function toggleBulkImport(){
   p.style.display = p.style.display==='none'?'block':'none';
 }
 
-function backupRoster(){
-  const payload={
-    exported: new Date().toISOString(),
-    members: members.map(m=>({name:m.name,rate:m.rate,sec:m.sec,wc:m.wc})),
+function handleCsvFile(e){
+  const file=e.target.files?.[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    const text=ev.target.result;
+    const rows=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    // Skip a header row if it looks like one
+    if(rows.length && /name/i.test(rows[0].split(/[,\t]/)[0]||'')) rows.shift();
+    const parsed=rows.map(l=>{
+      const c = l.includes('\t') ? l.split('\t') : splitCsvLine(l);
+      return {name:(c[0]||'').trim(), rate:(c[1]||'').trim(), sec:(c[2]||'').trim(), wc:(c[3]||'').trim()};
+    }).filter(r=>r.name);
+    if(!parsed.length){ toast('No valid rows found in file'); return; }
+    const data=await api('POST','/api/members/bulk',{members:parsed});
+    members.push(...(data.members||[]));
+    renderMuster(); renderRosterList();
+    const res=document.getElementById('importResult');
+    if(res){ res.className='import-result ok'; res.textContent=`Imported ${data.added} from ${file.name}.`; }
+    toast(`Imported ${data.added} members`);
   };
-  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  reader.readAsText(file);
+  e.target.value='';
+}
+
+// Handles quoted CSV fields, e.g.  "SMITH, JOHN A",STG2,BLUE,N85
+function splitCsvLine(line){
+  const out=[]; let cur=''; let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){ if(inQ&&line[i+1]==='"'){cur+='"';i++;} else inQ=!inQ; }
+    else if(ch===','&&!inQ){ out.push(cur); cur=''; }
+    else cur+=ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function backupRoster(){
+  if(!members.length){ toast('Roster is empty — nothing to back up'); return; }
+  const esc = v => { v=(v||''); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  const lines=['Name,Rate,Team,Division',
+    ...members.map(m=>[esc(m.name),esc(m.rate),esc(m.sec),esc(m.wc)].join(','))];
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const d=new Date();
   a.href=url;
-  a.download=`roster-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
-  a.click();
+  a.download=`roster-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`Backed up ${members.length} members`);
+  toast(`Backed up ${members.length} members to CSV`);
 }
 
 // ── Report ───────────────────────────────────────────────────────
@@ -691,6 +739,9 @@ function buildReport(){
     return parts.length?parts.join(', '):'No status';
   };
 
+  const usedCountsPlain={};
+  members.forEach(m=>{ if(m.status) usedCountsPlain[m.status]=(usedCountsPlain[m.status]||0)+1; });
+
   // ── Plain text ──
   const maxR=Math.max(...members.map(m=>(m.rate||'').length),4);
   const maxN=Math.max(...members.map(m=>m.name.length),20);
@@ -708,6 +759,10 @@ function buildReport(){
     `TEXTED IN:           ${txCount}/${total}`,
     `ACCOUNTED FOR:       ${accounted}/${total}`,
     `PENDING:             ${pending}`,
+    ...Object.keys(usedCountsPlain).sort().map(v=>{
+      const st=statuses.find(x=>x.v===v);
+      return `${(st?st.label:v).toUpperCase().padEnd(20)} ${usedCountsPlain[v]}`;
+    }),
     '',
     'FULL ROSTER:',
     ...rosterPlainLines,
@@ -735,6 +790,18 @@ function buildReport(){
     </div>`;
   }).join('');
 
+  // Issue 5: one box per status actually used — no "Other Statuses" bucket
+  const usedCounts={};
+  members.forEach(m=>{ if(m.status) usedCounts[m.status]=(usedCounts[m.status]||0)+1; });
+  const statusCards = Object.keys(usedCounts).sort().map(v=>{
+    const st=statuses.find(x=>x.v===v);
+    const lbl=st?st.label:v;
+    const ua=v==='UA';
+    const color = ua ? 'var(--danger)' : 'var(--pro-text)';
+    const bg    = ua ? 'var(--danger-bg)' : 'var(--pro-bg)';
+    return card(lbl, usedCounts[v], color, bg);
+  }).join('');
+
   const subEl=document.getElementById('submittedByRow');
   if(subEl) subEl.innerHTML=`
     <span style="font-size:13px;font-weight:500;color:var(--text-2)">Submitted by</span>
@@ -757,6 +824,7 @@ function buildReport(){
       ${card('Texted In', txCount+'/'+total, '#0369a1', '#e0f2fe')}
       ${card('Accounted For', accounted+'/'+total, 'var(--success)', 'var(--success-bg)')}
       ${card('Pending', pending, pending>0?'var(--danger)':'var(--text)', pending>0?'var(--danger-bg)':'var(--surface-alt)')}
+      ${statusCards}
     </div>
 
     <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Full roster · ${total} members</div>

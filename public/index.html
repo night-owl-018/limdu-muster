@@ -69,6 +69,7 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="sm" onclick="toggleBulkImport()"><i class="ti ti-table-import"></i> Bulk import</button>
         <button class="sm" onclick="backupRoster()"><i class="ti ti-download"></i> Backup</button>
+        <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none" onchange="handleCsvFile(event)">
         <button class="primary sm" onclick="toggleRosterAdd()"><i class="ti ti-user-plus"></i> Add member</button>
       </div>
     </div>
@@ -95,7 +96,8 @@
 
     <div id="bulkImportPanel" style="display:none" class="import-panel">
       <h3><i class="ti ti-table-import"></i> Bulk import</h3>
-      <p>One person per line: <code>Name, Rate, Team, Division</code></p>
+      <p>Choose a CSV file, or paste the roster below. One person per line: <code>Name, Rate, Team, Division</code></p>
+      <button class="primary sm" onclick="document.getElementById('csvFileInput').click()" style="margin-bottom:10px"><i class="ti ti-file-upload"></i> Choose CSV file...</button>
       <div class="import-example">SMITH, JOHN A, STG2, BLUE, N85<br>JONES, MARY B, STG1, RED, N85</div>
       <textarea id="importText" placeholder="Paste roster here..."></textarea>
       <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">

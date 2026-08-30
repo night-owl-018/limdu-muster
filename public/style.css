@@ -276,3 +276,12 @@ button.danger { background: var(--danger-bg); color: var(--danger); border-color
 .rpt-cards { display:grid; grid-template-columns:repeat(5,1fr); gap:7px; }
 @media(max-width:820px){ .rpt-cards { grid-template-columns:repeat(3,1fr); } }
 @media(max-width:520px){ .rpt-cards { grid-template-columns:repeat(2,1fr); } }
+
+/* Inline Clear button on member rows */
+.clear-btn { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600;
+  padding:7px 11px; border-radius:9px; border:1px solid var(--border-strong);
+  background:var(--surface); color:var(--text-3); white-space:nowrap; }
+.clear-btn i { font-size:14px; }
+.clear-btn:not(:disabled):hover { background:var(--danger-bg); color:var(--danger); border-color:color-mix(in srgb,var(--danger) 40%,transparent); }
+.clear-btn:disabled { opacity:.3; cursor:default; }
+@media(max-width:600px){ .clear-btn { padding:8px 10px; } .clear-btn i { font-size:16px; } }
