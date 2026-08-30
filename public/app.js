@@ -90,6 +90,7 @@ let sortDir     = 'manual';
 let showTeamDiv = localStorage.getItem('showTeamDiv')!=='false';
 let submittedBy = localStorage.getItem('submittedBy')||'';
 let reportPlain = '';
+let reportFilter = 'all';   // all | inperson | texted | accounted | pending
 let dragSrcId   = null;
 
 // ── API ──────────────────────────────────────────────────────────
@@ -133,6 +134,7 @@ function setSort(dir){
   document.getElementById('sortAscBtn')?.classList.toggle('primary',dir==='asc');
   document.getElementById('sortDescBtn')?.classList.toggle('primary',dir==='desc');
   renderMuster(); renderRosterList();
+  if(document.getElementById('tab-report')?.style.display!=='none') buildReport();
 }
 function onDragStart(e,id){ dragSrcId=id; e.dataTransfer.effectAllowed='move'; e.currentTarget.style.opacity='.45'; }
 function onDragEnd(e){ e.currentTarget.style.opacity='1'; }
@@ -292,13 +294,13 @@ function renderMuster(){
     first=false;
   };
 
+  add('Pending','var(--warn)','var(--warn-bg)',pending);
   add('Mustered','var(--success)','var(--success-bg)',mustered);
   Object.keys(others).sort().forEach(v=>{
     const st=statuses.find(x=>x.v===v);
     const ua=v==='UA';
     add(st?st.label:v, ua?'var(--danger)':'var(--text-2)', ua?'var(--danger-bg)':'var(--neutral-bg)', others[v]);
   });
-  add('Pending','var(--warn)','var(--warn-bg)',pending);
 
   el.innerHTML = html || `<div class="empty"><i class="ti ti-users"></i><p>No members found.</p></div>`;
 }
@@ -349,17 +351,29 @@ function musterCard(m){
       </select>
     </div>` : '';
 
-  // Pills — only what is actually selected. No "Both".
+  // 2B — every pill is tappable and clears just that thing
   let pills='';
-  if(m.inPerson) pills += `<span class="pill pill-IN-PERSON">In-Person Muster</span>`;
-  if(m.texted)   pills += `<span class="pill pill-TEXT">Texted In</span>`;
+  if(m.inPerson) pills += `<span class="pill pill-IN-PERSON tap" onclick="toggleFlag(${m.id},'inPerson')" title="Tap to clear">In-Person Muster</span>`;
+  if(m.texted)   pills += `<span class="pill pill-TEXT tap" onclick="toggleFlag(${m.id},'texted')" title="Tap to clear">Texted In</span>`;
   if(m.status){
     const st=getStatuses().find(x=>x.v===m.status);
-    pills += `<span class="pill pill-${m.status}">${st?st.label:m.status}</span>`;
+    pills += `<span class="pill pill-${m.status} tap" onclick="clearOtherStatus(${m.id})" title="Tap to clear">${st?st.label:m.status}</span>`;
   }
   if(!pills) pills = `<span class="pill pill-none">No status</span>`;
 
   const hasAny = m.inPerson||m.texted||!!m.status;
+
+  // 2C — once mustered, collapse to Clear + ⋯ only
+  const actions = hasAny
+    ? `<button class="clear-btn active" onclick="clearAllStatus(${m.id})" title="Clear all statuses">
+         <i class="ti ti-eraser"></i><span class="act-lbl">Clear</span>
+       </button>`
+    : `<button class="act-btn" onclick="toggleFlag(${m.id},'inPerson')" title="In-Person Muster">
+         <i class="ti ti-user-check"></i><span class="act-lbl">In-Person</span>
+       </button>
+       <button class="act-btn" onclick="toggleFlag(${m.id},'texted')" title="Texted In">
+         <i class="ti ti-message"></i><span class="act-lbl">Texted</span>
+       </button>`;
 
   return `<div class="card${hasAny?'':' pending'}${m.status==='UA'?' ua-card':''}"
       draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondrop="onDrop(event,${m.id})">
@@ -374,18 +388,17 @@ function musterCard(m){
       ${noteEl}
     </div>
     <div class="card-actions">
-      <button class="act-btn ${m.inPerson?'done':''}" onclick="toggleFlag(${m.id},'inPerson')" title="In-Person Muster">
-        <i class="ti ti-user-check"></i><span class="act-lbl">In-Person</span>
-      </button>
-      <button class="act-btn ${m.texted?'done-tx':''}" onclick="toggleFlag(${m.id},'texted')" title="Texted In">
-        <i class="ti ti-message"></i><span class="act-lbl">Texted</span>
-      </button>
-      <button class="clear-btn" onclick="clearAllStatus(${m.id})" title="Clear all statuses" ${hasAny?'':'disabled'}>
-        <i class="ti ti-eraser"></i><span class="act-lbl">Clear</span>
-      </button>
+      ${actions}
       <button class="more-btn" onclick="openSheet(${m.id})" title="More">⋯</button>
     </div>
   </div>`;
+}
+
+// Clears only the non-standard status (Leave, Sick Call, etc.), keeps muster flags
+async function clearOtherStatus(id){
+  await api('PUT',`/api/members/${id}`,{status:'',note:''});
+  const m=members.find(x=>x.id===id); if(m){ m.status=''; m.note=''; }
+  renderMuster();
 }
 
 // Issue 3 + 4: one action clears every status type
@@ -712,6 +725,23 @@ function handleSubmitterChange(v){
   buildReport();
 }
 
+function setReportFilter(f){
+  reportFilter = (reportFilter===f && f!=='all') ? 'all' : f;
+  buildReport();
+}
+
+// Sorted for report: mustered first, pending last, alpha within each — unless
+// the user has dragged rows into a manual order.
+function reportOrdered(){
+  if(sortDir==='manual') return members.slice();
+  const has = m => m.inPerson||m.texted||!!m.status;
+  const mustered = members.filter(has);
+  const pending  = members.filter(m=>!has(m));
+  const dir = sortDir==='desc' ? -1 : 1;
+  const alpha = (a,b)=>dir*a.name.localeCompare(b.name);
+  return [...mustered.sort(alpha), ...pending.sort(alpha)];
+}
+
 function buildReport(){
   const now=new Date();
   const months=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -726,7 +756,6 @@ function buildReport(){
   const pending   = members.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
   const accounted = members.filter(m=>m.inPerson||m.texted||m.status).length;
 
-  // Clean, deduped status label
   const label = m => {
     const parts=[];
     if(m.inPerson) parts.push('In-Person Muster');
@@ -739,13 +768,14 @@ function buildReport(){
     return parts.length?parts.join(', '):'No status';
   };
 
-  const usedCountsPlain={};
-  members.forEach(m=>{ if(m.status) usedCountsPlain[m.status]=(usedCountsPlain[m.status]||0)+1; });
+  const usedCounts={};
+  members.forEach(m=>{ if(m.status) usedCounts[m.status]=(usedCounts[m.status]||0)+1; });
 
-  // ── Plain text ──
+  // ── Plain text always covers the whole roster ──
+  const ordered = reportOrdered();
   const maxR=Math.max(...members.map(m=>(m.rate||'').length),4);
   const maxN=Math.max(...members.map(m=>m.name.length),20);
-  const rosterPlainLines=members.map(m=>{
+  const rosterPlainLines=ordered.map(m=>{
     const note=m.note?` (${m.note})`:'';
     return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label(m)}${note}`;
   });
@@ -759,9 +789,9 @@ function buildReport(){
     `TEXTED IN:           ${txCount}/${total}`,
     `ACCOUNTED FOR:       ${accounted}/${total}`,
     `PENDING:             ${pending}`,
-    ...Object.keys(usedCountsPlain).sort().map(v=>{
+    ...Object.keys(usedCounts).sort().map(v=>{
       const st=statuses.find(x=>x.v===v);
-      return `${(st?st.label:v).toUpperCase().padEnd(20)} ${usedCountsPlain[v]}`;
+      return `${(st?st.label:v).toUpperCase().padEnd(20)} ${usedCounts[v]}`;
     }),
     '',
     'FULL ROSTER:',
@@ -770,37 +800,48 @@ function buildReport(){
     `SUBMITTED BY: ${submittedBy||'______________________'}`,
   ].join('\n');
 
-  // ── HTML ──
-  const card=(lbl,val,color,bg)=>`
-    <div style="background:${bg};border:1px solid ${color==='var(--text)'?'var(--border)':`color-mix(in srgb,${color} 25%,transparent)`};border-radius:10px;padding:9px 11px;min-width:0">
-      <div style="font-size:9px;color:${color==='var(--text)'?'var(--text-3)':color};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lbl}</div>
-      <div style="font-size:19px;font-weight:700;color:${color};white-space:nowrap">${val}</div>
+  // ── Clickable stat tiles ──
+  const tile=(key,lbl,val,color,bg)=>{
+    const on = reportFilter===key;
+    return `<div class="rpt-tile ${on?'on':''}" onclick="setReportFilter('${key}')"
+      style="background:${on?bg:'var(--surface-alt)'};border-color:${on?color:'var(--border)'}">
+      <div class="rpt-tile-lbl" style="color:${on?color:'var(--text-3)'}">${lbl}</div>
+      <div class="rpt-tile-val" style="color:${color}">${val}</div>
     </div>`;
+  };
 
-  const rosterHtml=members.map((m,i)=>{
+  const statusTiles = Object.keys(usedCounts).sort().map(v=>{
+    const st=statuses.find(x=>x.v===v);
+    const ua=v==='UA';
+    return tile('st:'+v, st?st.label:v, usedCounts[v], ua?'var(--danger)':'var(--pro-text)', ua?'var(--danger-bg)':'var(--pro-bg)');
+  }).join('');
+
+  // ── Apply the active filter to the visible list ──
+  let shown = ordered;
+  if(reportFilter==='inperson')  shown = ordered.filter(m=>m.inPerson);
+  else if(reportFilter==='texted')    shown = ordered.filter(m=>m.texted);
+  else if(reportFilter==='accounted') shown = ordered.filter(m=>m.inPerson||m.texted||m.status);
+  else if(reportFilter==='pending')   shown = ordered.filter(m=>!m.inPerson&&!m.texted&&!m.status);
+  else if(reportFilter.startsWith('st:')) shown = ordered.filter(m=>m.status===reportFilter.slice(3));
+
+  const rosterHtml = shown.length ? shown.map((m,i)=>{
     const lb=label(m);
     const none=!m.inPerson&&!m.texted&&!m.status;
     const ua=m.status==='UA';
     const color=ua?'var(--danger)':none?'var(--text-3)':(m.inPerson||m.texted)?'var(--success)':'var(--text-2)';
     const note=m.note?`<span style="font-size:11px;color:var(--text-3)"> · ${m.note}</span>`:'';
-    return `<div class="rpt-roster-row" style="${i%2?'background:var(--surface-alt)':''}">
+    return `<div class="rpt-roster-row" style="${i%2?'background:var(--surface-alt)':''}"
+        draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)"
+        ondragover="onDragOver(event)" ondrop="onReportDrop(event,${m.id})">
+      <span class="rpt-grip"><i class="ti ti-grip-vertical"></i></span>
       <span class="rpt-rate">${m.rate||''}</span>
       <span class="rpt-name">${m.name}${note}</span>
       <span class="rpt-status" style="color:${color}">${lb}</span>
     </div>`;
-  }).join('');
+  }).join('') : `<div class="empty" style="padding:1.5rem"><p>No members in this filter.</p></div>`;
 
-  // Issue 5: one box per status actually used — no "Other Statuses" bucket
-  const usedCounts={};
-  members.forEach(m=>{ if(m.status) usedCounts[m.status]=(usedCounts[m.status]||0)+1; });
-  const statusCards = Object.keys(usedCounts).sort().map(v=>{
-    const st=statuses.find(x=>x.v===v);
-    const lbl=st?st.label:v;
-    const ua=v==='UA';
-    const color = ua ? 'var(--danger)' : 'var(--pro-text)';
-    const bg    = ua ? 'var(--danger-bg)' : 'var(--pro-bg)';
-    return card(lbl, usedCounts[v], color, bg);
-  }).join('');
+  const filterNote = reportFilter==='all' ? '' :
+    `<span style="font-size:11px;font-weight:400;color:var(--accent-text);text-transform:none;letter-spacing:0"> · filtered <button class="sm" style="font-size:10px;padding:1px 7px;margin-left:4px" onclick="setReportFilter('all')">Show all</button></span>`;
 
   const subEl=document.getElementById('submittedByRow');
   if(subEl) subEl.innerHTML=`
@@ -819,16 +860,33 @@ function buildReport(){
     <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()} · ${hhmm}</div>
 
     <div class="rpt-cards">
-      ${card('Personnel Assigned', total, 'var(--text)', 'var(--surface-alt)')}
-      ${card('In-Person Muster', ipCount+'/'+total, 'var(--success)', 'var(--success-bg)')}
-      ${card('Texted In', txCount+'/'+total, '#0369a1', '#e0f2fe')}
-      ${card('Accounted For', accounted+'/'+total, 'var(--success)', 'var(--success-bg)')}
-      ${card('Pending', pending, pending>0?'var(--danger)':'var(--text)', pending>0?'var(--danger-bg)':'var(--surface-alt)')}
-      ${statusCards}
+      ${tile('all','Personnel Assigned', total, 'var(--text)', 'var(--neutral-bg)')}
+      ${tile('inperson','In-Person Muster', ipCount+'/'+total, 'var(--success)', 'var(--success-bg)')}
+      ${tile('texted','Texted In', txCount+'/'+total, '#0369a1', '#e0f2fe')}
+      ${tile('accounted','Accounted For', accounted+'/'+total, 'var(--success)', 'var(--success-bg)')}
+      ${tile('pending','Pending', pending, pending>0?'var(--danger)':'var(--text)', pending>0?'var(--danger-bg)':'var(--neutral-bg)')}
+      ${statusTiles}
     </div>
 
-    <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Full roster · ${total} members</div>
+    <div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">Full roster · ${shown.length}${shown.length!==total?' of '+total:''} members${filterNote}</span>
+      <span style="margin-left:auto;display:flex;gap:5px;align-items:center">
+        <span style="font-size:11px;color:var(--text-3)">Sort:</span>
+        <button class="sm ${sortDir==='asc'?'primary':''}" onclick="setSort('asc')"><i class="ti ti-sort-ascending"></i></button>
+        <button class="sm ${sortDir==='desc'?'primary':''}" onclick="setSort('desc')"><i class="ti ti-sort-descending"></i></button>
+      </span>
+    </div>
     <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:3px">${rosterHtml}</div>`;
+}
+
+async function onReportDrop(e,tgtId){
+  e.preventDefault(); if(dragSrcId===tgtId)return;
+  const si=members.findIndex(m=>m.id===dragSrcId), ti=members.findIndex(m=>m.id===tgtId);
+  if(si<0||ti<0)return;
+  const [mv]=members.splice(si,1); members.splice(ti,0,mv);
+  sortDir='manual';
+  await api('POST','/api/members/reorder',{order:members.map(m=>m.id)});
+  buildReport();
 }
 
 function copyReport(){ navigator.clipboard.writeText(reportPlain).then(()=>toast('Copied!')); }

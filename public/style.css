@@ -285,3 +285,31 @@ button.danger { background: var(--danger-bg); color: var(--danger); border-color
 .clear-btn:not(:disabled):hover { background:var(--danger-bg); color:var(--danger); border-color:color-mix(in srgb,var(--danger) 40%,transparent); }
 .clear-btn:disabled { opacity:.3; cursor:default; }
 @media(max-width:600px){ .clear-btn { padding:8px 10px; } .clear-btn i { font-size:16px; } }
+
+/* Tappable pills (tap to clear) */
+.pill.tap { cursor:pointer; }
+.pill.tap:hover { filter:brightness(1.12); }
+.pill.tap::after { content:' ×'; opacity:.55; font-weight:400; }
+
+/* Clear button when active */
+.clear-btn.active { color:var(--text-2); border-color:var(--border-strong); }
+.clear-btn.active:hover { background:var(--danger-bg); color:var(--danger); border-color:color-mix(in srgb,var(--danger) 40%,transparent); }
+
+/* Report stat tiles — clickable */
+.rpt-tile { border:1px solid var(--border); border-radius:10px; padding:9px 11px; cursor:pointer;
+  transition:transform .08s, box-shadow .12s, border-color .12s; min-width:0; user-select:none; }
+.rpt-tile:hover { border-color:var(--border-strong); }
+.rpt-tile:active { transform:scale(.97); }
+.rpt-tile.on { box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent); }
+.rpt-tile-lbl { font-size:9px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px;
+  opacity:.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rpt-tile-val { font-size:19px; font-weight:700; white-space:nowrap; }
+
+/* Report roster rows — now with a drag grip */
+.rpt-roster-row { display:grid; grid-template-columns:22px 44px 1fr 130px; align-items:center;
+  padding:6px 8px; border-radius:5px; gap:4px; }
+.rpt-grip { color:var(--text-3); cursor:grab; display:flex; align-items:center; font-size:14px; }
+@media(max-width:600px){
+  .rpt-roster-row { grid-template-columns:20px 36px 1fr 92px; }
+  .rpt-status { font-size:11px; }
+}
