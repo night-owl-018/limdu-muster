@@ -64,10 +64,20 @@
 
   <!-- ROSTER MANAGEMENT TAB -->
   <div id="tab-roster" style="display:none">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
       <span style="font-size:15px;font-weight:600">Members <span id="rosterCount" style="font-size:13px;font-weight:400;color:var(--text-3)"></span></span>
-      <button class="primary sm" onclick="toggleRosterAdd()"><i class="ti ti-user-plus"></i> Add member</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="sm" onclick="toggleBulkImport()"><i class="ti ti-table-import"></i> Bulk import</button>
+        <button class="sm" onclick="backupRoster()"><i class="ti ti-download"></i> Backup</button>
+        <button class="primary sm" onclick="toggleRosterAdd()"><i class="ti ti-user-plus"></i> Add member</button>
+      </div>
     </div>
+
+    <div class="toolbar" style="margin-bottom:10px">
+      <input type="text" id="rosterSearch" placeholder="Search..." oninput="renderRosterList()">
+      <select id="rosterTeam" onchange="renderRosterList()"><option value="">All teams</option></select>
+    </div>
+
     <div id="rosterAddPanel" style="display:none" class="add-panel">
       <div class="add-panel-title"><i class="ti ti-user-plus"></i> Add new member</div>
       <div class="add-grid">
@@ -82,20 +92,24 @@
       </div>
       <div id="addErr" style="display:none;color:var(--danger);font-size:13px;margin-top:6px"></div>
     </div>
-    <div class="import-panel">
+
+    <div id="bulkImportPanel" style="display:none" class="import-panel">
       <h3><i class="ti ti-table-import"></i> Bulk import</h3>
       <p>One person per line: <code>Name, Rate, Team, Division</code></p>
       <div class="import-example">SMITH, JOHN A, STG2, BLUE, N85<br>JONES, MARY B, STG1, RED, N85</div>
       <textarea id="importText" placeholder="Paste roster here..."></textarea>
-      <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">
         <button class="primary sm" onclick="bulkImport()"><i class="ti ti-upload"></i> Import</button>
         <button class="sm" onclick="document.getElementById('importText').value=''">Clear</button>
+        <button class="sm" onclick="toggleBulkImport()">Close</button>
         <span id="importResult" class="import-result"></span>
       </div>
     </div>
+
     <div id="rosterList"></div>
+
     <div class="danger-zone">
-      <div><h4>Clear entire roster</h4><p>Removes all members. Cannot be undone.</p></div>
+      <div><h4>Clear entire roster</h4><p>Permanently deletes every member and all muster data. This action cannot be undone.</p></div>
       <button class="danger sm" onclick="clearAll()"><i class="ti ti-trash"></i> Clear</button>
     </div>
   </div>

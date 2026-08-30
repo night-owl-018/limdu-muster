@@ -101,6 +101,16 @@ async function api(method,path,body){
 async function load(){
   const data=await api('GET','/api/members');
   members=data.members||[];
+  // Migrate legacy status values into flags
+  const LEGACY={'IN-PERSON':'inPerson','PRESENT':'inPerson','TEXT':'texted'};
+  members.forEach(m=>{
+    if(m.inPerson===undefined) m.inPerson=false;
+    if(m.texted===undefined)   m.texted=false;
+    if(LEGACY[m.status]){
+      m[LEGACY[m.status]]=true; m.status='';
+      api('PUT',`/api/members/${m.id}`,{status:'',[LEGACY[m.status]]:true});
+    }
+  });
   renderSelectOptions();
   renderMuster(); renderRosterList();
 }
@@ -260,12 +270,6 @@ function renderMuster(){
       :`<div class="empty"><i class="ti ti-message"></i><p>No one has texted in yet.</p></div>`;
     return;
   }
-  if(musterView==='both'){
-    const f=list.filter(m=>m.inPerson&&m.texted);
-    el.innerHTML = f.length?`<div class="roster">${f.map(musterCard).join('')}</div>`
-      :`<div class="empty"><i class="ti ti-users"></i><p>No one has both.</p></div>`;
-    return;
-  }
   if(musterView.startsWith('st:')){
     const v=musterView.slice(3);
     const f=list.filter(m=>m.status===v);
@@ -274,17 +278,12 @@ function renderMuster(){
     return;
   }
 
-  // ── ALL view — sections ──
-  const both     = list.filter(m=> m.inPerson &&  m.texted);
-  const ipOnly   = list.filter(m=> m.inPerson && !m.texted);
-  const txOnly   = list.filter(m=>!m.inPerson &&  m.texted);
-  const noFlags  = list.filter(m=>!m.inPerson && !m.texted);
-
-  // Other statuses among people with no muster flags
-  const others={};
-  noFlags.forEach(m=>{ if(m.status) (others[m.status]=others[m.status]||[]).push(m); });
-  const pending = noFlags.filter(m=>!m.status);
+  // ── ALL view — sections by other status only ──
   const statuses=getStatuses();
+  const others={};
+  list.forEach(m=>{ if(m.status) (others[m.status]=others[m.status]||[]).push(m); });
+  const mustered = list.filter(m=>!m.status && (m.inPerson||m.texted));
+  const pending  = list.filter(m=>!m.status && !m.inPerson && !m.texted);
 
   let html='', first=true;
   const add=(label,color,bg,arr)=>{
@@ -293,9 +292,7 @@ function renderMuster(){
     first=false;
   };
 
-  add('Both','#7e22ce','var(--pro-bg)',both);
-  add('In-Person Muster','var(--success)','var(--success-bg)',ipOnly);
-  add('Texted In','#0369a1','#e0f2fe',txOnly);
+  add('Mustered','var(--success)','var(--success-bg)',mustered);
   Object.keys(others).sort().forEach(v=>{
     const st=statuses.find(x=>x.v===v);
     const ua=v==='UA';
@@ -310,21 +307,16 @@ function musterSubTabs(list, view){
   const total = members.length;
   const tabs=[{key:'all',label:'All',count:list.length}];
 
-  const pendingCount=list.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
-  if(pendingCount>0) tabs.push({key:'pending',label:'Pending',count:pendingCount,warn:true});
-
-  // Always show In-Person and Texted with X/total tally
   const ipCount=list.filter(m=>m.inPerson).length;
   const txCount=list.filter(m=>m.texted).length;
   tabs.push({key:'inperson',label:'In-Person Muster',count:`${ipCount}/${total}`,ok:true});
   tabs.push({key:'texted',label:'Texted In',count:`${txCount}/${total}`,tx:true});
 
-  const bothCount=list.filter(m=>m.inPerson&&m.texted).length;
-  if(bothCount>0) tabs.push({key:'both',label:'Both',count:bothCount,pro:true});
+  const pendingCount=list.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
+  if(pendingCount>0) tabs.push({key:'pending',label:'Pending',count:pendingCount,warn:true});
 
-  // One tab per other status (only among those without muster flags)
   const seen={};
-  list.forEach(m=>{ if(!m.inPerson&&!m.texted&&m.status) seen[m.status]=(seen[m.status]||0)+1; });
+  list.forEach(m=>{ if(m.status) seen[m.status]=(seen[m.status]||0)+1; });
   const statuses=getStatuses();
   Object.keys(seen).sort().forEach(v=>{
     const st=statuses.find(x=>x.v===v);
@@ -333,7 +325,7 @@ function musterSubTabs(list, view){
 
   return tabs.map(t=>
     `<button class="sub-tab ${view===t.key?'active':''}" onclick="setMusterView('${t.key}')"
-      style="${t.warn?'color:var(--warn)':t.ok?'color:var(--success)':t.tx?'color:#0369a1':t.pro?'color:#7e22ce':t.danger?'color:var(--danger)':''}">
+      style="${t.warn?'color:var(--warn)':t.ok?'color:var(--success)':t.tx?'color:#0369a1':t.danger?'color:var(--danger)':''}">
       ${t.label} <span class="badge">${t.count}</span></button>`).join('');
 }
 
@@ -345,7 +337,6 @@ function secHdr(label,color,bg,count,mt=false){
 }
 
 function musterCard(m){
-  const both = m.inPerson && m.texted;
   const noteEl = m.note?`<div class="card-note"><i class="ti ti-notes" style="font-size:11px"></i> ${m.note}</div>`:'';
   const metaRow = showTeamDiv ? `<div class="card-meta-row">
       <span class="field-lbl">TEAM</span>
@@ -358,14 +349,13 @@ function musterCard(m){
       </select>
     </div>` : '';
 
-  // Pills — can show multiple
+  // Pills — one per active thing. Click to clear.
   let pills='';
-  if(both) pills = `<span class="pill pill-both">Both</span>`;
-  else if(m.inPerson) pills = `<span class="pill pill-IN-PERSON">In-Person Muster</span>`;
-  else if(m.texted)   pills = `<span class="pill pill-TEXT">Texted In</span>`;
+  if(m.inPerson) pills += `<span class="pill pill-IN-PERSON clickable" onclick="toggleFlag(${m.id},'inPerson')" title="Click to clear">In-Person Muster</span>`;
+  if(m.texted)   pills += `<span class="pill pill-TEXT clickable" onclick="toggleFlag(${m.id},'texted')" title="Click to clear">Texted In</span>`;
   if(m.status){
     const st=getStatuses().find(x=>x.v===m.status);
-    pills += `<span class="pill pill-${m.status}">${st?st.label:m.status}</span>`;
+    pills += `<span class="pill pill-${m.status} clickable" onclick="clearStatus(${m.id})" title="Click to clear">${st?st.label:m.status}</span>`;
   }
   if(!pills) pills = `<span class="pill pill-none">No status</span>`;
 
@@ -378,7 +368,7 @@ function musterCard(m){
       <div class="card-top">
         ${pills}
         <span class="card-name">${m.name}</span>
-        <span class="card-meta">${m.rate||''}${m.sec&&!showTeamDiv?' · '+m.sec:''}</span>
+        <span class="card-meta">${m.rate||''}</span>
       </div>
       ${metaRow}
       ${noteEl}
@@ -393,6 +383,12 @@ function musterCard(m){
       <button class="more-btn" onclick="openSheet(${m.id})" title="More">⋯</button>
     </div>
   </div>`;
+}
+
+async function clearStatus(id){
+  await api('PUT',`/api/members/${id}`,{status:'',note:''});
+  const m=members.find(x=>x.id===id); if(m){m.status='';m.note='';}
+  renderMuster();
 }
 
 async function toggleFlag(id, flag){
@@ -535,7 +531,9 @@ async function deleteMember(id){
 }
 
 async function clearAll(){
-  if(!confirm('Remove ALL members permanently?'))return;
+  if(!confirm(`This will permanently delete all ${members.length} members and every muster entry.\n\nThis action is NOT recoverable. Back up your roster first if you have not already.\n\nContinue?`))return;
+  const typed = prompt('To confirm, type DELETE in capital letters:');
+  if(typed!=='DELETE'){ toast('Cancelled — roster not cleared'); return; }
   await api('DELETE','/api/members'); members=[];
   renderMuster(); renderRosterList(); toast('Roster cleared');
 }
@@ -597,9 +595,28 @@ async function saveEdit(){
 // ── Roster list ──────────────────────────────────────────────────
 function renderRosterList(){
   const el=document.getElementById('rosterList'); if(!el)return;
-  const cnt=document.getElementById('rosterCount'); if(cnt) cnt.textContent=`(${members.length})`;
-  if(!members.length){el.innerHTML='<div class="empty"><i class="ti ti-users"></i><p>No members yet.</p></div>';return;}
-  el.innerHTML=members.map(m=>`
+  const cnt=document.getElementById('rosterCount');
+
+  const q=(document.getElementById('rosterSearch')?.value||'').toLowerCase();
+  const ft=document.getElementById('rosterTeam')?.value||'';
+
+  const ts=document.getElementById('rosterTeam');
+  if(ts){ const cur=ts.value; ts.innerHTML=`<option value="">All teams</option>${getTeams().map(t=>`<option value="${t}"${cur===t?' selected':''}>${t}</option>`).join('')}`; }
+
+  const list=members.filter(m=>{
+    if(q&&!m.name.toLowerCase().includes(q)&&!(m.rate||'').toLowerCase().includes(q))return false;
+    if(ft&&m.sec!==ft)return false;
+    return true;
+  });
+
+  if(cnt) cnt.textContent = ft||q ? `(${list.length} of ${members.length})` : `(${members.length})`;
+
+  if(!list.length){
+    el.innerHTML=`<div class="empty"><i class="ti ti-users"></i><p>${members.length?'No members match the filter.':'No members yet.'}</p></div>`;
+    return;
+  }
+
+  el.innerHTML=list.map(m=>`
     <div class="roster-card" draggable="true" ondragstart="onDragStart(event,${m.id})" ondragend="onDragEnd(event)" ondragover="onDragOver(event)" ondrop="onDrop(event,${m.id})">
       <div style="cursor:grab;color:var(--text-3);padding:0 3px"><i class="ti ti-grip-vertical"></i></div>
       <div style="flex:1;min-width:0">
@@ -611,6 +628,27 @@ function renderRosterList(){
         <button class="icon del" onclick="deleteMember(${m.id})"><i class="ti ti-trash"></i></button>
       </div>
     </div>`).join('');
+}
+
+function toggleBulkImport(){
+  const p=document.getElementById('bulkImportPanel');
+  p.style.display = p.style.display==='none'?'block':'none';
+}
+
+function backupRoster(){
+  const payload={
+    exported: new Date().toISOString(),
+    members: members.map(m=>({name:m.name,rate:m.rate,sec:m.sec,wc:m.wc})),
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const d=new Date();
+  a.href=url;
+  a.download=`roster-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Backed up ${members.length} members`);
 }
 
 // ── Report ───────────────────────────────────────────────────────
@@ -635,21 +673,22 @@ function buildReport(){
   const statuses=getStatuses();
   const total=members.length;
 
-  const ipCount = members.filter(m=>m.inPerson).length;
-  const txCount = members.filter(m=>m.texted).length;
-  const pending = members.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
+  const ipCount   = members.filter(m=>m.inPerson).length;
+  const txCount   = members.filter(m=>m.texted).length;
+  const pending   = members.filter(m=>!m.inPerson&&!m.texted&&!m.status).length;
   const accounted = members.filter(m=>m.inPerson||m.texted||m.status).length;
 
-  // Other statuses breakdown (non-zero only)
-  const otherCounts={};
-  members.forEach(m=>{ if(m.status) otherCounts[m.status]=(otherCounts[m.status]||0)+1; });
-
+  // Clean, deduped status label
   const label = m => {
     const parts=[];
-    if(m.inPerson) parts.push('In-Person');
+    if(m.inPerson) parts.push('In-Person Muster');
     if(m.texted)   parts.push('Texted In');
-    if(m.status){ const st=statuses.find(x=>x.v===m.status); parts.push(st?st.label:m.status); }
-    return parts.length?parts.join(' + '):'No status';
+    if(m.status){
+      const st=statuses.find(x=>x.v===m.status);
+      const lbl=st?st.label:m.status;
+      if(!parts.includes(lbl)) parts.push(lbl);
+    }
+    return parts.length?parts.join(', '):'No status';
   };
 
   // ── Plain text ──
@@ -657,26 +696,18 @@ function buildReport(){
   const maxN=Math.max(...members.map(m=>m.name.length),20);
   const rosterPlainLines=members.map(m=>{
     const note=m.note?` (${m.note})`:'';
-    return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label(m).toUpperCase()}${note}`;
-  });
-
-  const summaryPlain=[
-    `PERSONNEL ASSIGNED:  ${total}`,
-    `IN-PERSON MUSTER:    ${ipCount}/${total}`,
-    `TEXTED IN:           ${txCount}/${total}`,
-    `ACCOUNTED FOR:       ${accounted}/${total}`,
-    `PENDING:             ${pending}`,
-  ];
-  Object.keys(otherCounts).sort().forEach(v=>{
-    const st=statuses.find(x=>x.v===v);
-    summaryPlain.push(`${(st?st.label:v).toUpperCase().padEnd(20)} ${otherCounts[v]}`);
+    return `  ${(m.rate||'').padEnd(maxR+1)}${m.name.padEnd(maxN+2)}${label(m)}${note}`;
   });
 
   reportPlain=[
     'MUSTER REPORT',
     `${days[now.getDay()].toUpperCase()} ${dt} / ${hhmm}`,
     '',
-    ...summaryPlain,
+    `PERSONNEL ASSIGNED:  ${total}`,
+    `IN-PERSON MUSTER:    ${ipCount}/${total}`,
+    `TEXTED IN:           ${txCount}/${total}`,
+    `ACCOUNTED FOR:       ${accounted}/${total}`,
+    `PENDING:             ${pending}`,
     '',
     'FULL ROSTER:',
     ...rosterPlainLines,
@@ -685,20 +716,11 @@ function buildReport(){
   ].join('\n');
 
   // ── HTML ──
-  const bigCard=(lbl,val,color,bg)=>`
-    <div style="background:${bg};border:1px solid ${color==='var(--text)'?'var(--border)':`color-mix(in srgb,${color} 25%,transparent)`};border-radius:10px;padding:10px 12px">
-      <div style="font-size:10px;color:${color==='var(--text)'?'var(--text-3)':color};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.85">${lbl}</div>
-      <div style="font-size:22px;font-weight:700;color:${color}">${val}</div>
+  const card=(lbl,val,color,bg)=>`
+    <div style="background:${bg};border:1px solid ${color==='var(--text)'?'var(--border)':`color-mix(in srgb,${color} 25%,transparent)`};border-radius:10px;padding:9px 11px;min-width:0">
+      <div style="font-size:9px;color:${color==='var(--text)'?'var(--text-3)':color};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lbl}</div>
+      <div style="font-size:19px;font-weight:700;color:${color};white-space:nowrap">${val}</div>
     </div>`;
-
-  const otherRows = Object.keys(otherCounts).sort().map(v=>{
-    const st=statuses.find(x=>x.v===v);
-    const ua=v==='UA';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:7px;background:var(--surface-alt)">
-      <span style="font-size:13px;color:${ua?'var(--danger)':'var(--text-2)'}">${st?st.label:v}</span>
-      <span style="font-size:15px;font-weight:700;color:${ua?'var(--danger)':'var(--text)'}">${otherCounts[v]}</span>
-    </div>`;
-  }).join('');
 
   const rosterHtml=members.map((m,i)=>{
     const lb=label(m);
@@ -727,25 +749,17 @@ function buildReport(){
   if(warn){ if(pending>0){warn.innerHTML=`<i class="ti ti-alert-triangle"></i> ${pending} member(s) not yet accounted for.`;warn.style.display='flex';}else warn.style.display='none'; }
 
   document.getElementById('reportBody').innerHTML=`
-    <div style="margin-bottom:14px">
-      <div class="rpt-header-title">Muster Report</div>
-      <div style="font-size:12px;color:var(--text-3);margin-top:2px">${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()} · ${hhmm}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()} · ${hhmm}</div>
+
+    <div class="rpt-cards">
+      ${card('Personnel Assigned', total, 'var(--text)', 'var(--surface-alt)')}
+      ${card('In-Person Muster', ipCount+'/'+total, 'var(--success)', 'var(--success-bg)')}
+      ${card('Texted In', txCount+'/'+total, '#0369a1', '#e0f2fe')}
+      ${card('Accounted For', accounted+'/'+total, 'var(--success)', 'var(--success-bg)')}
+      ${card('Pending', pending, pending>0?'var(--danger)':'var(--text)', pending>0?'var(--danger-bg)':'var(--surface-alt)')}
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
-      ${bigCard('Personnel Assigned', total, 'var(--text)', 'var(--surface-alt)')}
-      ${bigCard('In-Person Muster', ipCount+'/'+total, 'var(--success)', 'var(--success-bg)')}
-      ${bigCard('Texted In', txCount+'/'+total, '#0369a1', '#e0f2fe')}
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:${otherRows?'10px':'14px'}">
-      ${bigCard('Accounted For', accounted+'/'+total, 'var(--success)', 'var(--success-bg)')}
-      ${bigCard('Pending', pending, pending>0?'var(--danger)':'var(--text)', pending>0?'var(--danger-bg)':'var(--surface-alt)')}
-    </div>
-
-    ${otherRows?`<div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Other statuses</div>
-    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">${otherRows}</div>`:''}
-
-    <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Full roster · ${total} members</div>
+    <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Full roster · ${total} members</div>
     <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:3px">${rosterHtml}</div>`;
 }
 
